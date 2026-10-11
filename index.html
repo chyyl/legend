@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#1a1a2e">
+  <meta name="description" content="Project Emancipate - 等距像素ARPG，解放世界">
+  <title>Project Emancipate / 解放计划</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0a12; font-family: "Microsoft YaHei", "PingFang SC", sans-serif; }
+    #game-canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+    #loading { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #0a0a12; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; }
+    #loading.hidden { display: none; }
+    .loading-logo { font-size: 48px; font-weight: bold; color: #c9a962; text-shadow: 0 0 20px rgba(201,169,98,0.5); margin-bottom: 20px; letter-spacing: 4px; }
+    .loading-subtitle { font-size: 16px; color: #888; margin-bottom: 30px; }
+    .loading-bar { width: 300px; height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; overflow: hidden; }
+    .loading-bar-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #c9a962, #ffd700); transition: width 0.3s; }
+    .loading-text { margin-top: 15px; font-size: 14px; color: #666; }
+    #error-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(10,10,18,0.95); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 2000; padding: 20px; text-align: center; }
+    #error-overlay.visible { display: flex; }
+    .error-title { color: #ff4444; font-size: 24px; margin-bottom: 10px; }
+    .error-message { color: #ccc; font-size: 14px; margin-bottom: 20px; max-width: 500px; }
+    .error-btn { padding: 12px 30px; background: #c9a962; color: #1a1a2e; border: none; border-radius: 4px; font-size: 16px; cursor: pointer; font-weight: bold; }
+    .error-btn:hover { background: #ffd700; }
+    @media (max-width: 768px) {
+      .loading-logo { font-size: 32px; }
+      .loading-bar { width: 90vw; }
+    }
+  </style>
+</head>
+<body>
+  <div id="loading">
+    <div class="loading-logo">PROJECT EMANCIPATE</div>
+    <div class="loading-subtitle">解放计划</div>
+    <div class="loading-bar"><div class="loading-bar-fill" id="loading-progress"></div></div>
+    <div class="loading-text" id="loading-text">初始化中...</div>
+  </div>
+
+  <canvas id="game-canvas"></canvas>
+
+  <div id="error-overlay">
+    <div class="error-title">游戏加载失败</div>
+    <div class="error-message" id="error-message"></div>
+    <button class="error-btn" onclick="location.reload()">重新加载</button>
+  </div>
+
+  <script type="module">
+    import './js/main.js';
+
+    // Loading simulation
+    const progress = document.getElementById('loading-progress');
+    const text = document.getElementById('loading-text');
+    const loading = document.getElementById('loading');
+    const errorOverlay = document.getElementById('error-overlay');
+    const errorMsg = document.getElementById('error-message');
+
+    const steps = [
+      { p: 10, t: '加载核心模块...' },
+      { p: 25, t: '初始化随机数生成器...' },
+      { p: 40, t: '生成程序化噪声...' },
+      { p: 55, t: '构建地形网格 (Delaunay)...' },
+      { p: 70, t: '生成建筑与区域...' },
+      { p: 85, t: '初始化战斗与掉落系统...' },
+      { p: 95, t: '启动渲染器与音频...' },
+      { p: 100, t: '准备就绪' }
+    ];
+
+    let step = 0;
+    function nextStep() {
+      if (step >= steps.length) {
+        loading.classList.add('hidden');
+        return;
+      }
+      const s = steps[step];
+      progress.style.width = s.p + '%';
+      text.textContent = s.t;
+      step++;
+      setTimeout(nextStep, 100 + Math.random() * 100);
+    }
+    nextStep();
+
+    // Global error handler
+    window.addEventListener('error', (e) => {
+      console.error('Game error:', e.error);
+      errorMsg.textContent = e.error?.message || e.message || '未知错误';
+      errorOverlay.classList.add('visible');
+    });
+
+    window.addEventListener('unhandledrejection', (e) => {
+      console.error('Unhandled rejection:', e.reason);
+      errorMsg.textContent = e.reason?.message || '异步错误';
+      errorOverlay.classList.add('visible');
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,31 @@
+{
+  "name": "project-emancipate",
+  "version": "1.0.0",
+  "description": "Project Emancipate - Zero-dependency isometric ARPG",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:ui": "playwright test --ui",
+    "test:debug": "playwright test --debug",
+    "lint": "node --check js/main.js js/engine/*.js js/gameplay/*.js js/ui/*.js js/editor/*.js"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.44.0",
+    "playwright": "^1.44.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "arpg",
+    "isometric",
+    "canvas2d",
+    "procedural",
+    "webgl",
+    "offline-first"
+  ],
+  "author": "",
+  "license": "MIT"
+}
