@@ -53,7 +53,7 @@ def get_sdk_url():
 def run(cmd, cwd=None, env=None, check=True):
     """Run command and return result"""
     print(f'  $ {cmd}')
-    result = subprocess.run(cmd, shell=True, cwd=cwd, env=env, capture_output=True, text=True)
+    result = subprocess.run(cmd, shell=True, cwd=cwd, env=env, capture_output=True, text=True, encoding='utf-8', errors='replace')
     if result.stdout: print(result.stdout.strip())
     if result.stderr: print(result.stderr.strip(), file=sys.stderr)
     if check and result.returncode != 0:
@@ -92,7 +92,7 @@ def setup_android_sdk():
     cmdline_tools_zip = SDK_DIR / 'cmdline-tools.zip'
 
     if not (SDK_DIR / 'cmdline-tools' / 'bin' / 'sdkmanager').exists():
-        print('📥 Downloading Android SDK command line tools...')
+        print('[*] Downloading Android SDK command line tools...')
         download_file(sdk_url, cmdline_tools_zip)
         extract_archive(cmdline_tools_zip, SDK_DIR)
         # Move to correct location
@@ -139,7 +139,7 @@ def setup_gradle():
     """Download Gradle if not present"""
     gradle_dir = BUILD_DIR / f'gradle-{GRADLE_VERSION}'
     if not (gradle_dir / 'bin' / 'gradle').exists():
-        print('📥 Downloading Gradle...')
+        print('[*] Downloading Gradle...')
         gradle_zip = BUILD_DIR / f'gradle-{GRADLE_VERSION}-bin.zip'
         download_file(GRADLE_URL, gradle_zip)
         extract_archive(gradle_zip, BUILD_DIR)
@@ -406,19 +406,19 @@ def copy_game_assets():
 def build_apk(clean=False):
     """Build the APK"""
     if clean and BUILD_DIR.exists():
-        print('🧹 Cleaning build directory...')
+        print('[*] Cleaning build directory...')
         shutil.rmtree(BUILD_DIR)
 
-    print('🔧 Setting up Android SDK...')
+    print('[*] Setting up Android SDK...')
     setup_android_sdk()
 
-    print('🔧 Setting up Gradle...')
+    print('[*] Setting up Gradle...')
     gradle = setup_gradle()
 
-    print('📝 Generating Gradle files...')
+    print('[*] Generating Gradle files...')
     generate_gradle_files()
 
-    print('📦 Copying game assets...')
+    print('[*] Copying game assets...')
     copy_game_assets()
 
     # Set up environment
@@ -433,7 +433,7 @@ def build_apk(clean=False):
         env['ANDROID_NDK_HOME'] = str(ndk_path)
         env['ANDROID_NDK_ROOT'] = str(ndk_path)
 
-    print('🏗️ Building APK...')
+    print('[*] Building APK...')
     result = run(f'"{gradle}" assembleDebug', cwd=BUILD_DIR, env=env)
 
     # Find and copy APK
