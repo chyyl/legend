@@ -16,7 +16,7 @@ export const BIOMES = {
 };
 
 export const CHUNK_SIZE = 256; // world units per chunk
-export const GRID_SPACING = 16; // base vertex spacing
+export const GRID_SPACING = 32; // base vertex spacing (32 → ~1000 points, triangulation stays <1s)
 export const JITTER = 4; // grid perturbation
 
 /**
