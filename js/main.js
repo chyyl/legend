@@ -95,7 +95,8 @@ async function init() {
     if (bar) bar.style.width = pct + '%';
     if (label && text) label.textContent = text;
   };
-  const nextFrame = () => new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
+  // Yield so UI can repaint — setTimeout (NOT rAF: rAF never fires in hidden tabs)
+  const nextFrame = () => new Promise(r => setTimeout(r, 0));
 
   // Load settings
   loadSettings();
@@ -126,16 +127,19 @@ async function init() {
   terrain = generateTerrain({ seed, width: 1000, height: 1000 });
   console.log(`Terrain: ${terrain.pointCount} vertices, ${terrain.triangleCount} triangles`);
 
-  // Generate buildings
-  setProgress(60, '生成建筑与区域...');
-  await nextFrame();
-  buildings = generateBuildingsForWorld(terrain, seed);
-
-  // Initialize gameplay systems
-  setProgress(75, '初始化战斗与掉落系统...');
+  // Initialize gameplay systems (must exist BEFORE buildings — generateBuildingsForWorld reads zones)
+  setProgress(55, '初始化区域与掉落系统...');
   await nextFrame();
   liberation = createLiberationSystem({ seed });
   loot = createLootSystem({ rng: globalPRNG });
+
+  // Generate buildings
+  setProgress(65, '生成建筑与区域...');
+  await nextFrame();
+  buildings = generateBuildingsForWorld(terrain, seed);
+
+  setProgress(75, '初始化战斗系统...');
+  await nextFrame();
 
   // Create player entity
   player = createPlayer();
