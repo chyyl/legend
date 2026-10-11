@@ -462,7 +462,7 @@ def main():
         print('  Build completed successfully!')
         print(f'  Output: {DIST_DIR / "legend.apk"}')
     except Exception as e:
-        print(f'❌ Build failed: {e}', file=sys.stderr)
+        print(f'[ERR] Build failed: {e}', file=sys.stderr)
         sys.exit(1)
 
 if __name__ == '__main__':
