@@ -38,7 +38,7 @@ def main():
     os.chdir(Path(__file__).parent)
 
     with socketserver.TCPServer(("", port), NoCacheHandler) as httpd:
-        print(f"🚀 Project Emancipate Dev Server")
+        print(f"[*] Project Emancipate Dev Server")
         print(f"   Serving at: http://localhost:{port}")
         print(f"   Game:       http://localhost:{port}/index.html")
         print(f"   Editor:     http://localhost:{port}/editor.html")
@@ -47,7 +47,7 @@ def main():
         try:
             httpd.serve_forever()
         except KeyboardInterrupt:
-            print("\n👋 Server stopped")
+            print("\n[*] Server stopped")
 
 if __name__ == '__main__':
     main()
