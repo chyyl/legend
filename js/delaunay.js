@@ -51,21 +51,21 @@ export function delaunayTriangulate(points) {
     triangles = kept;
 
     // Find boundary edges (edges shared by only one bad triangle)
-    const edgeCount = new Map();
+    // Preserve original edge DIRECTION — orientation must stay counter-clockwise
+    const edgeMap = new Map();
     for (const tri of badTriangles) {
       for (let e = 0; e < 3; e++) {
         const a = tri[e], b = tri[(e + 1) % 3];
-        const key = a < b ? `${a},${b}` : `${b},${a}`;
-        edgeCount.set(key, (edgeCount.get(key) || 0) + 1);
+        const key = a < b ? a + ',' + b : b + ',' + a;
+        const rec = edgeMap.get(key);
+        if (rec) rec.count++;
+        else edgeMap.set(key, { a, b, count: 1 });
       }
     }
 
     const polygon = [];
-    for (const [key, count] of edgeCount) {
-      if (count === 1) {
-        const [a, b] = key.split(',').map(Number);
-        polygon.push([a, b]);
-      }
+    for (const rec of edgeMap.values()) {
+      if (rec.count === 1) polygon.push([rec.a, rec.b]);
     }
 
     // Re-triangulate polygon
