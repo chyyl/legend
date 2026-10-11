@@ -48,37 +48,9 @@
   <script type="module">
     import './js/main.js';
 
-    // Loading simulation
-    const progress = document.getElementById('loading-progress');
-    const text = document.getElementById('loading-text');
-    const loading = document.getElementById('loading');
+    // Loading progress is driven by js/main.js (real init steps)
     const errorOverlay = document.getElementById('error-overlay');
     const errorMsg = document.getElementById('error-message');
-
-    const steps = [
-      { p: 10, t: '加载核心模块...' },
-      { p: 25, t: '初始化随机数生成器...' },
-      { p: 40, t: '生成程序化噪声...' },
-      { p: 55, t: '构建地形网格 (Delaunay)...' },
-      { p: 70, t: '生成建筑与区域...' },
-      { p: 85, t: '初始化战斗与掉落系统...' },
-      { p: 95, t: '启动渲染器与音频...' },
-      { p: 100, t: '准备就绪' }
-    ];
-
-    let step = 0;
-    function nextStep() {
-      if (step >= steps.length) {
-        loading.classList.add('hidden');
-        return;
-      }
-      const s = steps[step];
-      progress.style.width = s.p + '%';
-      text.textContent = s.t;
-      step++;
-      setTimeout(nextStep, 100 + Math.random() * 100);
-    }
-    nextStep();
 
     // Global error handler
     window.addEventListener('error', (e) => {
