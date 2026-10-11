@@ -1,0 +1,94 @@
+{
+  "_meta": {
+    "file": "responsive-breakpoints.json",
+    "version": "1.2.0",
+    "validatedOn": "2026-10-03",
+    "breakpoint_count": 4,
+    "strategy": "移动优先，min-width 递进。未达 sm 视为移动端基线，向上依次叠加增强规则。",
+    "purpose": "给出四档断点的容器宽度、栅格与塌陷规则，供 03 UI 规格与 06 窄屏检查共用。"
+  },
+  "breakpoints": {
+    "sm": {
+      "label": "移动",
+      "minWidth": 0,
+      "containerWidth": "100%",
+      "columns": 4,
+      "gutter": "16px",
+      "margin": "16px",
+      "collapse": "所有多列区块改为单列堆叠。表格改为卡片式行布局，字段标签在上、值在下。侧边导航改为顶部抽屉或底部标签栏。操作按钮占满容器宽度。主要操作置于底部固定区。",
+      "typographyScale": 1.0,
+      "notes": "基线档。不允许出现横向滚动条，容器左右内边距 16px。"
+    },
+    "md": {
+      "label": "平板竖屏",
+      "minWidth": 768,
+      "containerWidth": "720px",
+      "columns": 8,
+      "gutter": "20px",
+      "margin": "24px",
+      "collapse": "两列区块可保持两列，但列间距收窄至 20px。表格保留列结构并允许横向滚动容器包裹。侧边导航可保持窄边栏。操作按钮恢复内容宽度，按主次纵向排列。",
+      "typographyScale": 1.0,
+      "notes": "768px 为主要断点。表单从单列转两列，label 与输入框同行。"
+    },
+    "lg": {
+      "label": "桌面",
+      "minWidth": 1024,
+      "containerWidth": "960px",
+      "columns": 12,
+      "gutter": "24px",
+      "margin": "32px",
+      "collapse": "恢复完整多列布局。侧边导航展开为固定边栏。表格展示全部列，行操作列常驻。仪表盘指标卡一行 3 至 4 个。",
+      "typographyScale": 1.0,
+      "notes": "后台类界面主要工作区。容器不超过 960px 保证行长可读。"
+    },
+    "xl": {
+      "label": "宽屏",
+      "minWidth": 1440,
+      "containerWidth": "1200px",
+      "columns": 12,
+      "gutter": "32px",
+      "margin": "40px",
+      "collapse": "列数不变，仅放大容器宽度与留白。仪表盘可增加侧栏区域。不允许因空间富余而增加列数，避免行长超出一屏可读范围。",
+      "typographyScale": 1.0,
+      "notes": "宽屏只放宽留白，不加列。避免行过长降低可读性。"
+    }
+  },
+  "_rules": {
+    "must_check": {
+      "rule": "每个断点下主路径必须仍可完成。逐档验证从进入到提交的全过程是否可点击、可提交、可返回。",
+      "onFail": "断点处主路径断裂记为 P0，属交付契约硬门槛"
+    },
+    "touch_target": {
+      "minSize": "44x44px",
+      "appliesTo": "sm 档全部可点击元素，含图标按钮、表单控件、表格行内操作",
+      "spacing": "相邻可点击元素间距不小于 8px",
+      "onFail": "移动端目标过小记为 P0"
+    },
+    "no_horizontal_scroll": {
+      "rule": "任何断点下页面不得出现横向滚动条。表格与代码块可用内部滚动容器，但容器本身不溢出。",
+      "checks": [
+        "最长中文文案与最长英文单词不撑破容器",
+        "固定定位元素不超出视口宽度",
+        "负margin 偏移不造成溢出",
+        "表格列宽总和不超出容器"
+      ],
+      "onFail": "出现横向滚动记为 P1"
+    },
+    "elastic_text": {
+      "rule": "字号放大至 200% 时布局不重叠、不截断。配合 data/component-states.json 的 focus 要求一起核对。",
+      "checks": [
+        "用相对单位而非固定 px 字号",
+        "按钮与标签容器可随文本增高",
+        "省略号只用于确可截断处，且提供 title 或展开入口",
+        "弹性布局容器设置 min-width 为 0",
+        "表格横向滚动容器设 tabindex 为 0 可键盘滚动",
+        "隐藏文字不得承载唯一信息"
+      ]
+    },
+    "verification": {
+      "viewportWidths": [320, 375, 768, 1024, 1440, 1920],
+      "fontScale": ["100%", "200%"],
+      "note": "评审级原型只需给出规则与验证清单，不需要逐档出图。"
+    }
+  }
+}

@@ -1,0 +1,276 @@
+{
+  "_meta": {
+    "file": "design-tokens.base.json",
+    "version": "1.2.0",
+    "validatedOn": "2026-10-03",
+    "layerModel": "primitive -> semantic -> component",
+    "referenceSyntax": "{path.to.token}",
+    "purpose": "提供三层 token 的基线取值与映射规则，供 03 线框转 UI 与 04 UI 转设计系统两阶段起始使用。",
+    "notes": [
+      "本文件是基线样例，不含品牌资产。落地时按项目实际取值替换 primitive 层，semantic 与 component 层随之映射。",
+      "component 层不得出现任何色值、字号、间距字面量，只能引用 semantic 或 primitive。",
+      "typography 按用途命名而非按字号命名，替换品牌字体时不需要重新推导层级语义。"
+    ]
+  },
+  "primitive": {
+    "color": {
+      "gray-0": "#FFFFFF",
+      "gray-50": "#F7F8FA",
+      "gray-100": "#EDF0F4",
+      "gray-200": "#DDE1E7",
+      "gray-300": "#C3C9D2",
+      "gray-500": "#6B7280",
+      "gray-700": "#374151",
+      "gray-900": "#111827",
+      "blue-100": "#E3EDFB",
+      "blue-600": "#1D4ED8",
+      "blue-700": "#1A3FB0",
+      "red-100": "#FDECEA",
+      "red-600": "#C0392B",
+      "green-100": "#E6F4EC",
+      "green-600": "#1E7A47",
+      "amber-100": "#FDF3E2",
+      "amber-700": "#8A5A00"
+    },
+    "spacing": {
+      "1": "4px",
+      "2": "8px",
+      "3": "12px",
+      "4": "16px",
+      "5": "24px",
+      "6": "32px",
+      "7": "40px",
+      "8": "48px"
+    },
+    "radius": {
+      "sm": "2px",
+      "md": "4px",
+      "lg": "8px",
+      "pill": "999px"
+    },
+    "shadow": {
+      "low": "0 1px 2px rgba(17, 24, 39, 0.06)",
+      "mid": "0 4px 12px rgba(17, 24, 39, 0.10)"
+    },
+    "fontFamily": {
+      "sans": "-apple-system, BlinkMacSystemFont, \"PingFang SC\", \"Hiragino Sans GB\", \"Microsoft YaHei\", sans-serif",
+      "mono": "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+    },
+    "duration": {
+      "instant": "0ms",
+      "fast": "120ms",
+      "normal": "200ms",
+      "slow": "320ms"
+    }
+  },
+  "semantic": {
+    "color": {
+      "bg-canvas": "{primitive.color.gray-0}",
+      "bg-surface": "{primitive.color.gray-0}",
+      "bg-subtle": "{primitive.color.gray-50}",
+      "bg-inset": "{primitive.color.gray-100}",
+      "bg-inverse": "{primitive.color.gray-900}",
+      "text-primary": "{primitive.color.gray-900}",
+      "text-secondary": "{primitive.color.gray-700}",
+      "text-muted": "{primitive.color.gray-500}",
+      "text-on-inverse": "{primitive.color.gray-0}",
+      "text-link": "{primitive.color.blue-600}",
+      "action-primary": "{primitive.color.blue-600}",
+      "action-primary-hover": "{primitive.color.blue-700}",
+      "action-danger": "{primitive.color.red-600}",
+      "action-success": "{primitive.color.green-600}",
+      "action-warning": "{primitive.color.amber-700}",
+      "border-subtle": "{primitive.color.gray-200}",
+      "border-strong": "{primitive.color.gray-300}",
+      "focus-ring": "{primitive.color.blue-600}"
+    },
+    "typography": {
+      "hero-display": {
+        "usage": "页面主标题、营销首屏、单栏落地页主文案",
+        "fontFamily": "{primitive.fontFamily.sans}",
+        "fontSize": "28px",
+        "fontWeight": 600,
+        "lineHeight": "36px",
+        "letterSpacing": "-0.2px"
+      },
+      "page-title": {
+        "usage": "页面标题栏，列表页与详情页顶部",
+        "fontFamily": "{primitive.fontFamily.sans}",
+        "fontSize": "20px",
+        "fontWeight": 600,
+        "lineHeight": "28px",
+        "letterSpacing": "-0.1px"
+      },
+      "section-title": {
+        "usage": "卡片标题、分组标题、表单分组标题",
+        "fontFamily": "{primitive.fontFamily.sans}",
+        "fontSize": "16px",
+        "fontWeight": 600,
+        "lineHeight": "24px",
+        "letterSpacing": "0"
+      },
+      "lead": {
+        "usage": "导语、详情页摘要、空状态主文案",
+        "fontFamily": "{primitive.fontFamily.sans}",
+        "fontSize": "14px",
+        "fontWeight": 400,
+        "lineHeight": "22px",
+        "letterSpacing": "0"
+      },
+      "body": {
+        "usage": "正文、表单说明、表格单元格主文本",
+        "fontFamily": "{primitive.fontFamily.sans}",
+        "fontSize": "13px",
+        "fontWeight": 400,
+        "lineHeight": "20px",
+        "letterSpacing": "0"
+      },
+      "caption": {
+        "usage": "辅助说明、时间戳、字段计数、图表轴标签",
+        "fontFamily": "{primitive.fontFamily.sans}",
+        "fontSize": "12px",
+        "fontWeight": 400,
+        "lineHeight": "18px",
+        "letterSpacing": "0"
+      },
+      "code-inline": {
+        "usage": "追踪 ID、接口字段名、token 名、等宽片段",
+        "fontFamily": "{primitive.fontFamily.mono}",
+        "fontSize": "12px",
+        "fontWeight": 400,
+        "lineHeight": "18px",
+        "letterSpacing": "0"
+      }
+    },
+    "spacing": {
+      "page-inline": "{primitive.spacing.5}",
+      "page-block": "{primitive.spacing.6}",
+      "section-gap": "{primitive.spacing.5}",
+      "block-gap": "{primitive.spacing.4}",
+      "field-gap": "{primitive.spacing.2}",
+      "control-gap": "{primitive.spacing.3}"
+    },
+    "radius": {
+      "control": "{primitive.radius.md}",
+      "surface": "{primitive.radius.lg}",
+      "pill": "{primitive.radius.pill}"
+    },
+    "size": {
+      "controlHeight": "32px",
+      "controlHeightLarge": "40px",
+      "touchTarget": "44px",
+      "iconSize": "16px"
+    },
+    "focus": {
+      "ringWidth": "2px",
+      "ringOffset": "2px",
+      "ring": "outline {semantic.focus.ringWidth} solid {semantic.color.focus-ring}, outline-offset {semantic.focus.ringOffset}"
+    },
+    "shadow": {
+      "card": "{primitive.shadow.low}",
+      "overlay": "{primitive.shadow.mid}"
+    },
+    "motion": {
+      "hover-feedback": "{primitive.duration.fast}",
+      "panel-enter": "{primitive.duration.normal}",
+      "overlay-enter": "{primitive.duration.slow}"
+    }
+  },
+  "component": {
+    "Button.primary": {
+      "bg": "{semantic.color.action-primary}",
+      "bgHover": "{semantic.color.action-primary-hover}",
+      "text": "{semantic.color.text-on-inverse}",
+      "radius": "{semantic.radius.control}",
+      "paddingY": "{primitive.spacing.2}",
+      "paddingX": "{primitive.spacing.4}",
+      "fontSize": "{semantic.typography.body.fontSize}",
+      "lineHeight": "{semantic.typography.body.lineHeight}",
+      "fontWeight": 500,
+      "minHeight": "{semantic.size.controlHeight}",
+      "focusRing": "{semantic.focus.ring}"
+    },
+    "Button.secondary": {
+      "bg": "{semantic.color.bg-canvas}",
+      "text": "{semantic.color.text-primary}",
+      "border": "{semantic.color.border-strong}",
+      "radius": "{semantic.radius.control}",
+      "paddingY": "{primitive.spacing.2}",
+      "paddingX": "{primitive.spacing.4}",
+      "fontSize": "{semantic.typography.body.fontSize}",
+      "lineHeight": "{semantic.typography.body.lineHeight}",
+      "minHeight": "{semantic.size.controlHeight}",
+      "focusRing": "{semantic.focus.ring}"
+    },
+    "Button.danger": {
+      "bg": "{semantic.color.action-danger}",
+      "text": "{semantic.color.text-on-inverse}",
+      "radius": "{semantic.radius.control}",
+      "paddingY": "{primitive.spacing.2}",
+      "paddingX": "{primitive.spacing.4}",
+      "fontSize": "{semantic.typography.body.fontSize}",
+      "lineHeight": "{semantic.typography.body.lineHeight}",
+      "minHeight": "{semantic.size.controlHeight}",
+      "focusRing": "{semantic.focus.ring}"
+    },
+    "Input.text": {
+      "bg": "{semantic.color.bg-surface}",
+      "text": "{semantic.color.text-primary}",
+      "placeholder": "{semantic.color.text-muted}",
+      "border": "{semantic.color.border-strong}",
+      "radius": "{semantic.radius.control}",
+      "paddingY": "{primitive.spacing.2}",
+      "paddingX": "{primitive.spacing.3}",
+      "fontSize": "{semantic.typography.body.fontSize}",
+      "lineHeight": "{semantic.typography.body.lineHeight}",
+      "minHeight": "{semantic.size.controlHeight}",
+      "focusRing": "{semantic.focus.ring}"
+    },
+    "Card.default": {
+      "bg": "{semantic.color.bg-surface}",
+      "border": "{semantic.color.border-subtle}",
+      "radius": "{semantic.radius.surface}",
+      "padding": "{primitive.spacing.5}",
+      "shadow": "{semantic.shadow.card}"
+    },
+    "Table.row": {
+      "bg": "{semantic.color.bg-surface}",
+      "bgAlternate": "{semantic.color.bg-subtle}",
+      "text": "{semantic.color.text-primary}",
+      "border": "{semantic.color.border-subtle}",
+      "cellPaddingY": "{primitive.spacing.2}",
+      "cellPaddingX": "{primitive.spacing.3}",
+      "fontSize": "{semantic.typography.body.fontSize}",
+      "lineHeight": "{semantic.typography.body.lineHeight}"
+    }
+  },
+  "_rules": {
+    "naming": {
+      "semanticPattern": "用途-属性，形如 bg-canvas、text-muted、action-primary",
+      "forbidden": [
+        "颜色-色值命名，如 blue-600-text、gray-light",
+        "序号命名，如 level-1、title-3、size-2",
+        "同义词混用，如 clickable、tappable、btn 三者并存"
+      ],
+      "typographyRule": "typography 必须按用途命名。禁止按字号命名，因为字号会随项目调整变化，用途不会变。",
+      "componentPattern": "组件.变体，形如 Button.primary；跨页面复用后才允许进 component 层"
+    },
+    "contrast": {
+      "bodyText": "4.5:1",
+      "largeText": "3:1",
+      "keyControl": "3:1，指按钮、输入框边框、开关、滑块等可交互边界",
+      "onFail": "在 06 原型 QA 报告记为 P0 问题，并给出替换后的 semantic 取值建议"
+    },
+    "no_hardcode": {
+      "scope": "component 层",
+      "rule": "component 层每个属性值必须是 {path.to.token} 引用，不得出现色值、px、rem、ms 字面量",
+      "exception": "borderWidth、opacity、zIndex 等 primitive 层未收录的量，允许直接给值并在同文件登记",
+      "onViolate": "视为设计系统未收敛，回退到 04 阶段补 semantic 层"
+    },
+    "threeLayerMapping": {
+      "rule": "primitive 只允许被 semantic 引用，semantic 只允许被 component 引用",
+      "exception": "primitive 之间可互相引用，例如 border-strong 引用 gray-300",
+      "check": "运行 python3 scripts/validate_pack.py 可校验 component 层无字面量"
+    }
+  }
+}

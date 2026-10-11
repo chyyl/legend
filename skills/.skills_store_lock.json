@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "skills": {
+    "@user_cae83fba/design-ui-prototype-expert-pack": {
+      "name": "PRD到UI原型设计专家团",
+      "zip_url": "https://api.skillhub.cn/api/v1/download?slug=design-ui-prototype-expert-pack&namespace=user_cae83fba",
+      "source": "community",
+      "version": "1.2.0",
+      "namespace": {
+        "canonicalName": "@user_cae83fba/design-ui-prototype-expert-pack",
+        "displayName": "user_cae83fba",
+        "handle": "user_cae83fba",
+        "publicSlug": "design-ui-prototype-expert-pack"
+      },
+      "internalSlug": "design-ui-prototype-expert-pack",
+      "publicSlug": "design-ui-prototype-expert-pack",
+      "installDir": "C:\\Users\\L1896\\Desktop\\legend\\skills\\@user_cae83fba\\design-ui-prototype-expert-pack"
+    }
+  }
+}

@@ -1,0 +1,174 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "page-inventory.schema.json",
+  "title": "页面清单结构",
+  "description": "01需求到产品结构 与 02 流程到线框图 两段共用的页面清单交付物结构。专家文件中的字段名必须与本文件属性名完全一致。",
+  "type": "object",
+  "required": ["productGoal", "pages"],
+  "additionalProperties": false,
+  "properties": {
+    "productGoal": {
+      "type": "string",
+      "minLength": 4,
+      "description": "一句话可复述的北极星目标。禁止写成视觉或技术描述。"
+    },
+    "nonGoals": {
+      "type": "array",
+      "minItems": 2,
+      "items": { "type": "string", "minLength": 2 },
+      "description": "本次明确不解决的范围。少于 2 条说明边界未想清楚。"
+    },
+    "users": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["role", "task"],
+        "additionalProperties": false,
+        "properties": {
+          "role": { "type": "string", "minLength": 1, "description": "角色名，不用「管理员」这类泛称。" },
+          "task": { "type": "string", "minLength": 1, "description": "该角色要完成的任务。" },
+          "permission": { "type": "string", "description": "权限范围，缺省填待确认。" }
+        }
+      }
+    },
+    "assumptions": {
+      "type": "array",
+      "description": "合理假设。每条须标注来源与影响范围，不允许与 facts 混写。",
+      "items": {
+        "type": "object",
+        "required": ["statement", "source", "impact"],
+        "additionalProperties": false,
+        "properties": {
+          "statement": { "type": "string", "minLength": 2 },
+          "source": { "type": "string", "minLength": 1, "description": "来源：用户原话 / 行业惯例 / 缺省默认。" },
+          "impact": { "type": "string", "minLength": 1, "description": "假设不成立时需返工的范围。" }
+        }
+      }
+    },
+    "openQuestions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["question", "blocking"],
+        "additionalProperties": false,
+        "properties": {
+          "question": { "type": "string", "minLength": 4 },
+          "blocking": { "type": "boolean", "description": "为 true 时阻断进入下一阶段。" },
+          "errorCode": { "type": "string", "description": "阻断类问题引用 references/error-codes.md 的 E 码。" }
+        }
+      }
+    },
+    "pages": {
+      "type": "array",
+      "minItems": 1,
+      "description": "页面清单。数组顺序须符合用户的真实决策顺序，不按后台菜单顺序排。",
+      "items": {
+        "type": "object",
+        "required": ["name", "goal", "reason", "entry", "exit", "blocks", "primaryActions", "coveredStates"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "description": "页面名，与用户语言一致。" },
+          "goal": { "type": "string", "minLength": 4, "description": "该页要帮用户完成的任务。" },
+          "reason": { "type": "string", "minLength": 8, "description": "存在理由。必填，禁止用「常规需要」敷衍。" },
+          "entry": { "type": "string", "minLength": 1, "description": "进入方式，含来源页面或触发动作。" },
+          "exit": { "type": "string", "minLength": 1, "description": "离开去向，含成功去向与失败去向。" },
+          "blocks": {
+            "type": "array",
+            "minItems": 2,
+            "description": "区块列表，顺序须符合用户在该页的决策顺序。",
+            "items": {
+              "type": "object",
+              "required": ["name", "purpose", "priority"],
+              "additionalProperties": false,
+              "properties": {
+                "name": { "type": "string", "minLength": 1 },
+                "purpose": { "type": "string", "minLength": 2 },
+                "priority": { "type": "integer", "minimum": 1, "maximum": 3, "description": "1 为最高优先级。" },
+                "fields": { "type": "array", "items": { "type": "string" }, "description": "区块内展示或录入的字段。" }
+              }
+            }
+          },
+          "primaryActions": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
+            "description": "主要操作。每页恰好一个，多个即视为主操作不成立。",
+            "items": {
+              "type": "object",
+              "required": ["name", "result"],
+              "additionalProperties": false,
+              "properties": {
+                "name": { "type": "string", "minLength": 1 },
+                "result": { "type": "string", "minLength": 1, "description": "点击后的可观察结果。" },
+                "target": { "type": "string", "description": "作用目标元素或页面。" }
+              }
+            }
+          },
+          "secondaryActions": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 },
+            "description": "次要操作，不得与主要操作视觉同级。"
+          },
+          "coveredStates": {
+            "type": "array",
+            "minItems": 4,
+            "uniqueItems": true,
+            "description": "状态覆盖。必须含主态、空态、错态、加载态、权限态五项。",
+            "items": {
+              "type": "string",
+              "enum": ["主态", "空态", "错态", "加载态", "权限态", "冲突态", "禁用态", "成功态", "离线态"]
+            },
+            "allOf": [
+              {
+                "contains": { "const": "主态" }
+              },
+              { "contains": { "const": "空态" } },
+              { "contains": { "const": "错态" } },
+              { "contains": { "const": "加载态" } },
+              { "contains": { "const": "权限态" } }
+            ]
+          },
+          "jumpTargets": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 },
+            "description": "跳转目标页面名，须存在于 pages 中。"
+          },
+          "permission": { "type": "string", "description": "该页的角色权限说明，缺省填待确认。" }
+        }
+      }
+    },
+    "mainPath": {
+      "type": "array",
+      "minItems": 2,
+      "items": { "type": "string", "minLength": 1 },
+      "description": "主路径页面序列，须可被评审者一步复述。"
+    },
+    "branchPaths": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["trigger", "path"],
+        "additionalProperties": false,
+        "properties": {
+          "trigger": { "type": "string", "minLength": 1 },
+          "path": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "exceptionPaths": {
+      "type": "array",
+      "description": "异常与恢复路径，每条须给出用户可执行的下一步。",
+      "items": {
+        "type": "object",
+        "required": ["trigger", "handling", "recovery"],
+        "additionalProperties": false,
+        "properties": {
+          "trigger": { "type": "string", "minLength": 1 },
+          "handling": { "type": "string", "minLength": 1 },
+          "recovery": { "type": "string", "minLength": 1, "description": "用户如何回到主路径。" }
+        }
+      }
+    }
+  }
+}

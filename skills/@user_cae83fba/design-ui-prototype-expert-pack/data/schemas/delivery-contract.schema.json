@@ -1,0 +1,578 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "delivery-contract.schema.json",
+  "title": "交付物结构校验",
+  "description": "覆盖四类交付物的结构定义：需求确认表、设计 token 三层、前端交接清单、需求覆盖矩阵。专家文件中的字段名必须与本文件属性名完全一致。",
+  "type": "object",
+  "required": ["meta", "artifacts"],
+  "additionalProperties": false,
+  "properties": {
+    "meta": {
+      "type": "object",
+      "required": ["stage", "version", "productGoal"],
+      "additionalProperties": false,
+      "properties": {
+        "stage": {
+          "type": "string",
+          "enum": ["01", "02", "03", "04", "05", "06"],
+          "description": "产出该交付物的专家阶段编号。"
+        },
+        "version": { "type": "string", "const": "1.2.0" },
+        "productGoal": { "type": "string", "minLength": 4 },
+        "conclusion": { "type": "string", "minLength": 4, "description": "一句话结论，评审者应能独立复述。" },
+        "nextStage": { "type": "string", "enum": ["01", "02", "03", "04", "05", "06", "无"] }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "description": "本次交付包含的产物列表。",
+      "items": {
+        "type": "object",
+        "required": ["kind"],
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["requirementConfirmation", "designTokens", "frontendHandoff", "requirementCoverage"],
+            "description": "四类产物之一。"
+          },
+          "requirementConfirmation": { "$ref": "#/definitions/requirementConfirmation" },
+          "designTokens": { "$ref": "#/definitions/designTokens" },
+          "frontendHandoff": { "$ref": "#/definitions/frontendHandoff" },
+          "requirementCoverage": { "$ref": "#/definitions/requirementCoverage" }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "requirementConfirmation": {
+      "type": "object",
+      "description": "需求确认表。01 与 02 阶段的结论载体，pageInventory 复用 page-inventory.schema.json 的 pages 结构。",
+      "required": ["goal", "nonGoals", "users", "scenarios", "pageInventory", "mainPath", "assumptions", "openQuestions", "risks"],
+      "additionalProperties": false,
+      "properties": {
+        "goal": { "type": "string", "minLength": 4 },
+        "nonGoals": {
+          "type": "array",
+          "minItems": 2,
+          "items": { "type": "string", "minLength": 2 }
+        },
+        "users": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["role", "scenario", "task"],
+            "additionalProperties": false,
+            "properties": {
+              "role": { "type": "string", "minLength": 1 },
+              "scenario": { "type": "string", "minLength": 2, "description": "什么场景下使用。" },
+              "task": { "type": "string", "minLength": 2 },
+              "permission": { "type": "string" }
+            }
+          }
+        },
+        "scenarios": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 2 }
+        },
+        "pageInventory": {
+          "type": "array",
+          "minItems": 1,
+          "description": "页面清单。结构见 data/schemas/page-inventory.schema.json 的 pages 数组。",
+          "items": {
+            "type": "object",
+            "required": ["name", "goal", "reason", "entry", "exit", "blocks", "primaryActions", "coveredStates"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "goal": { "type": "string", "minLength": 4 },
+              "reason": { "type": "string", "minLength": 8 },
+              "entry": { "type": "string", "minLength": 1 },
+              "exit": { "type": "string", "minLength": 1 },
+              "blocks": {
+                "type": "array",
+                "minItems": 2,
+                "items": {
+                  "type": "object",
+                  "required": ["name", "purpose", "priority"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "name": { "type": "string", "minLength": 1 },
+                    "purpose": { "type": "string", "minLength": 2 },
+                    "priority": { "type": "integer", "minimum": 1, "maximum": 3 },
+                    "fields": { "type": "array", "items": { "type": "string" } }
+                  }
+                }
+              },
+              "primaryActions": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 1,
+                "items": {
+                  "type": "object",
+                  "required": ["name", "result"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "name": { "type": "string", "minLength": 1 },
+                    "result": { "type": "string", "minLength": 1 },
+                    "target": { "type": "string" }
+                  }
+                }
+              },
+              "secondaryActions": { "type": "array", "items": { "type": "string" } },
+              "coveredStates": {
+                "type": "array",
+                "minItems": 4,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "enum": ["主态", "空态", "错态", "加载态", "权限态", "冲突态", "禁用态", "成功态", "离线态"]
+                },
+                "allOf": [
+                  { "contains": { "const": "主态" } },
+                  { "contains": { "const": "空态" } },
+                  { "contains": { "const": "错态" } },
+                  { "contains": { "const": "加载态" } },
+                  { "contains": { "const": "权限态" } }
+                ]
+              },
+              "jumpTargets": { "type": "array", "items": { "type": "string" } },
+              "permission": { "type": "string" }
+            }
+          }
+        },
+        "mainPath": {
+          "type": "array",
+          "minItems": 2,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "branchPaths": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["trigger", "path"],
+            "additionalProperties": false,
+            "properties": {
+              "trigger": { "type": "string" },
+              "path": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        },
+        "exceptionPaths": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["trigger", "handling", "recovery"],
+            "additionalProperties": false,
+            "properties": {
+              "trigger": { "type": "string" },
+              "handling": { "type": "string" },
+              "recovery": { "type": "string" }
+            }
+          }
+        },
+        "assumptions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["statement", "source", "impact"],
+            "additionalProperties": false,
+            "properties": {
+              "statement": { "type": "string", "minLength": 2 },
+              "source": { "type": "string", "minLength": 1 },
+              "impact": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "openQuestions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["question", "blocking"],
+            "additionalProperties": false,
+            "properties": {
+              "question": { "type": "string", "minLength": 4 },
+              "blocking": { "type": "boolean" },
+              "errorCode": { "type": "string" }
+            }
+          }
+        },
+        "risks": {
+          "type": "array",
+          "minItems": 1,
+          "description": "评审风险。空数组视为未做风险评估。",
+          "items": {
+            "type": "object",
+            "required": ["risk", "impact", "suggestion"],
+            "additionalProperties": false,
+            "properties": {
+              "risk": { "type": "string", "minLength": 2 },
+              "impact": { "type": "string", "enum": ["高", "中", "低"] },
+              "suggestion": { "type": "string", "minLength": 2 }
+            }
+          }
+        }
+      }
+    },
+    "designTokens": {
+      "type": "object",
+      "description": "设计 token 三层与组件状态。04 阶段产物。",
+      "required": ["primitiveTokens", "semanticTokens", "componentTokens", "components", "nonReusable", "undecided"],
+      "additionalProperties": false,
+      "properties": {
+        "primitiveTokens": {
+          "type": "array",
+          "minItems": 3,
+          "description": "第一层原始值。允许无语义，但必须集中登记。",
+          "items": {
+            "type": "object",
+            "required": ["name", "value", "category"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "value": { "type": "string", "minLength": 1 },
+              "category": { "type": "string", "enum": ["color", "typography", "spacing", "radius", "shadow", "motion", "zIndex"] }
+            }
+          }
+        },
+        "semanticTokens": {
+          "type": "array",
+          "minItems": 5,
+          "description": "第二层语义。必须写明使用场景与禁用场景。",
+          "items": {
+            "type": "object",
+            "required": ["name", "primitiveRef", "usage", "forbiddenUsage"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "primitiveRef": { "type": "string", "minLength": 1, "description": "引用的原始 token 名。" },
+              "usage": { "type": "string", "minLength": 2 },
+              "forbiddenUsage": { "type": "string", "minLength": 2 }
+            }
+          }
+        },
+        "componentTokens": {
+          "type": "array",
+          "minItems": 1,
+          "description": "第三层组件。仅在组件级参数与语义不同时建立。",
+          "items": {
+            "type": "object",
+            "required": ["name", "semanticRef", "override"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "semanticRef": { "type": "string", "minLength": 1 },
+              "override": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "components": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["name", "states", "anatomy", "usage", "forbiddenUsage"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "states": {
+                "type": "array",
+                "minItems": 7,
+                "uniqueItems": true,
+                "description": "状态覆盖。至少 7 态，缺项须在 missingStates 登记。",
+                "items": {
+                  "type": "string",
+                  "enum": ["默认", "悬停", "聚焦", "按下", "禁用", "加载", "错误", "成功", "只读", "选中"]
+                }
+              },
+              "missingStates": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "确实不适用或待确认的状态。留空表示七态齐备。"
+              },
+              "anatomy": { "type": "array", "items": { "type": "string" }, "description": "组件结构分区。" },
+              "props": { "type": "array", "items": { "type": "string" } },
+              "usage": { "type": "string", "minLength": 2 },
+              "forbiddenUsage": { "type": "string", "minLength": 2 }
+            }
+          }
+        },
+        "nonReusable": {
+          "type": "array",
+          "minItems": 1,
+          "description": "不可复用清单。空数组须在结论中说明为何无需列出。",
+          "items": {
+            "type": "object",
+            "required": ["item", "reason"],
+            "additionalProperties": false,
+            "properties": {
+              "item": { "type": "string", "minLength": 1 },
+              "reason": { "type": "string", "minLength": 4 }
+            }
+          }
+        },
+        "undecided": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["item", "question"],
+            "additionalProperties": false,
+            "properties": {
+              "item": { "type": "string" },
+              "question": { "type": "string", "minLength": 4 }
+            }
+          }
+        },
+        "frontendMapping": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["tokenName", "target"],
+            "additionalProperties": false,
+            "properties": {
+              "tokenName": { "type": "string" },
+              "target": { "type": "string", "description": "CSS 变量名、Tailwind token 或组件 props。" }
+            }
+          }
+        }
+      }
+    },
+    "frontendHandoff": {
+      "type": "object",
+      "description": "前端交接清单。05 阶段产物。",
+      "required": ["components", "fields", "eventBehaviors", "apiAssumptions", "tracking", "breakpoints", "scopeBoundary"],
+      "additionalProperties": false,
+      "properties": {
+        "components": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["name", "props", "states"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "props": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+              "states": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+              "usedInPages": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        },
+        "fields": {
+          "type": "array",
+          "minItems": 1,
+          "description": "字段与校验表。必填字段必须有校验规则。",
+          "items": {
+            "type": "object",
+            "required": ["name", "type", "required", "validation"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "type": { "type": "string", "minLength": 1 },
+              "required": { "type": "boolean" },
+              "validation": { "type": "array", "items": { "type": "string" }, "description": "必填字段不得为空数组。" },
+              "errorMessage": { "type": "string" }
+            },
+            "allOf": [
+              {
+                "if": { "properties": { "required": { "const": true } } },
+                "then": { "properties": { "validation": { "minItems": 1 } } }
+              }
+            ]
+          }
+        },
+        "eventBehaviors": {
+          "type": "array",
+          "minItems": 3,
+          "description": "事件行为表。至少覆盖提交、校验、回退三类。",
+          "items": {
+            "type": "object",
+            "required": ["trigger", "immediateFeedback", "successFeedback", "failureFeedback"],
+            "additionalProperties": false,
+            "properties": {
+              "trigger": { "type": "string", "minLength": 1 },
+              "target": { "type": "string" },
+              "immediateFeedback": { "type": "string", "minLength": 1, "description": "100 至 300ms 内的反馈。" },
+              "successFeedback": { "type": "string", "minLength": 1 },
+              "failureFeedback": { "type": "string", "minLength": 1, "description": "失败时的提示与回退路径。" }
+            }
+          },
+          "allOf": [
+            { "contains": { "properties": { "trigger": { "const": "提交" } }, "required": ["trigger"] } },
+            { "contains": { "properties": { "trigger": { "const": "校验失败" } }, "required": ["trigger"] } },
+            { "contains": { "properties": { "trigger": { "const": "回退" } }, "required": ["trigger"] } }
+          ]
+        },
+        "apiAssumptions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "assumption", "confirmed"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "assumption": { "type": "string", "minLength": 2 },
+              "confirmed": { "type": "boolean", "description": "false 表示须向后端确认。" }
+            }
+          }
+        },
+        "tracking": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["event", "trigger"],
+            "additionalProperties": false,
+            "properties": {
+              "event": { "type": "string", "minLength": 1 },
+              "trigger": { "type": "string", "minLength": 1 },
+              "properties": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        },
+        "breakpoints": {
+          "type": "array",
+          "minItems": 4,
+          "description": "断点表。至少覆盖 320窄屏、移动端、笔记本、桌面宽屏四档。",
+          "items": {
+            "type": "object",
+            "required": ["name", "range", "layoutChange"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string", "enum": ["窄屏", "移动端", "笔记本", "桌面宽屏"] },
+              "range": { "type": "string", "minLength": 3, "description": "如 320-767px。" },
+              "layoutChange": { "type": "string", "minLength": 2 },
+              "primaryPathKept": { "type": "boolean", "description": "该档主路径是否仍可完成。" }
+            }
+          },
+          "uniqueItems": true
+        },
+        "elasticText": {
+          "type": "array",
+          "minItems": 6,
+          "description": "弹性文本六条落地方式。逐条给出处理方式，不接受笼统写「自适应」。",
+          "items": {
+            "type": "object",
+            "required": ["rule", "approach"],
+            "additionalProperties": false,
+            "properties": {
+              "rule": { "type": "string", "minLength": 2 },
+              "approach": { "type": "string", "minLength": 4 }
+            }
+          }
+        },
+        "accessibility": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["item", "result"],
+            "additionalProperties": false,
+            "properties": {
+              "item": { "type": "string", "enum": ["对比度", "焦点可见", "键盘可达", "状态冗余表达", "触控尺寸"] },
+              "result": { "type": "string", "minLength": 2 }
+            }
+          }
+        },
+        "scopeBoundary": {
+          "type": "object",
+          "required": ["isProductionCode", "excluded"],
+          "additionalProperties": false,
+          "properties": {
+            "isProductionCode": { "type": "boolean", "const": false, "description": "评审级原型恒为 false。" },
+            "excluded": { "type": "array", "minItems": 1, "items": { "type": "string" }, "description": "未覆盖的工程内容。" }
+          }
+        }
+      }
+    },
+    "requirementCoverage": {
+      "type": "object",
+      "description": "需求覆盖矩阵。06 阶段产物，需求条目须逐条有实现状态。",
+      "required": ["items", "uncovered", "verdict", "score"],
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["requirementId", "requirement", "status", "evidence"],
+            "additionalProperties": false,
+            "properties": {
+              "requirementId": { "type": "string", "minLength": 1 },
+              "requirement": { "type": "string", "minLength": 2 },
+              "source": { "type": "string", "description": "需求来源位置。" },
+              "status": {
+                "type": "string",
+                "enum": ["已实现", "部分实现", "未实现", "实现有偏差", "无法验证"]
+              },
+              "evidence": { "type": "string", "minLength": 4, "description": "证据位置，精确到文件与行号或区块名。" },
+              "severity": { "type": "string", "enum": ["P0", "P1", "P2", "P3", "无"] },
+              "suggestion": { "type": "string" }
+            }
+          }
+        },
+        "uncovered": { "type": "array", "items": { "type": "string" }, "description": "无法验证的输入或未覆盖范围。" },
+        "verdict": { "type": "string", "enum": ["通过", "带风险通过", "不通过"] },
+        "score": { "$ref": "#/definitions/score" },
+        "diffFromIntent": {
+          "type": "array",
+          "description": "设计意图与实现的差异记录。",
+          "items": {
+            "type": "object",
+            "required": ["intent", "actual", "assessment"],
+            "additionalProperties": false,
+            "properties": {
+              "intent": { "type": "string", "minLength": 2 },
+              "actual": { "type": "string", "minLength": 2 },
+              "assessment": { "type": "string", "enum": ["一致", "可接受偏差", "需修复"] }
+            }
+          }
+        }
+      }
+    },
+    "score": {
+      "type": "object",
+      "description": "七维质量评分。权重合计 100，操作定义见 qa/scoring-workflow.md。",
+      "required": ["dimensions", "total", "verdict"],
+      "additionalProperties": false,
+      "properties": {
+        "dimensions": {
+          "type": "array",
+          "minItems": 7,
+          "maxItems": 7,
+          "items": {
+            "type": "object",
+            "required": ["name", "weight", "score", "deductions"],
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string",
+                "enum": ["视觉层级", "一致性", "可读性与可访问性", "响应式可用性", "交互反馈", "设计系统复用度", "交付可落地性"]
+              },
+              "weight": { "type": "integer", "enum": [20, 15, 20, 15, 10, 10, 10] },
+              "score": { "type": "integer", "minimum": 0, "maximum": 100, "description": "该维度得分率。" },
+              "deductions": {
+                "type": "array",
+                "minItems": 1,
+                "description": "扣分须逐条给出依据。无扣分时填「无」。",
+                "items": {
+                  "type": "object",
+                  "required": ["reason", "deduct"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "reason": { "type": "string", "minLength": 4 },
+                    "deduct": { "type": "number", "minimum": 0 }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "total": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "verdict": { "type": "string", "enum": ["通过", "带风险通过", "不通过"] }
+      }
+    }
+  }
+}

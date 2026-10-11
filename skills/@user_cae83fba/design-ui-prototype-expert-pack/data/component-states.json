@@ -1,0 +1,192 @@
+{
+  "_meta": {
+    "file": "component-states.json",
+    "version": "1.2.0",
+    "validatedOn": "2026-10-03",
+    "component_count": 12,
+    "state_count": 7,
+    "purpose": "给出 12 类组件在 7 个状态下的表现与传达方式，供 03 UI 规格与 06 原型 QA 两阶段逐项核对。",
+    "stateList": ["default", "hover", "focus", "active", "disabled", "loading", "error"],
+    "validation": [
+      "每类组件必须覆盖全部 7 个状态，缺一即在 06 记为 P1 问题",
+      "focus 状态必须给出 outline 与 outlineOffset 具体值，只写「有焦点样式」视为未覆盖",
+      "disabled 状态必须给出原因传达方式，只改透明度视为未覆盖",
+      "error 状态允许标注 notApplicable，但必须写明理由与替代表达位置"
+    ]
+  },
+  "_rules": {
+    "focus": {
+      "requirement": "键盘可达元素必须有可见焦点，焦点样式不得被容器裁切",
+      "outline": "outline 2px solid {semantic.color.focus-ring}",
+      "outlineOffset": "2px",
+      "a11y": "焦点环与相邻元素对比度不低于 3:1。禁止移除 outline 而不提供替代视觉标识。焦点顺序须与视觉阅读顺序一致。",
+      "onFail": "06 记为 P0，属无障碍硬门槛项"
+    },
+    "disabled": {
+      "requirement": "禁用态必须让用户知道元素存在但当前不可用，以及为什么不可用",
+      "reasonChannels": [
+        "原生 disabled 属性，保证不可聚焦与不可提交",
+        "title 或 aria-describedby 说明禁用原因",
+        "就近提示文字，写明需要先完成什么条件"
+      ],
+      "forbidden": "仅降低不透明度而没有任何原因说明",
+      "onFail": "06 记为 P1"
+    },
+    "loading": {
+      "requirement": "loading 必须保留原控件尺寸，避免布局跳动；超过 300ms 才显示，避免闪烁",
+      "forbidden": "用 loading 覆盖整个页面而不说明正在做什么",
+      "onFail": "06 记为 P1"
+    },
+    "error": {
+      "requirement": "错误提示就近给出，说明发生了什么以及怎么解决",
+      "placement": "字段下方或输入框内，红色边框加文字，不只用颜色表达",
+      "onFail": "06 记为 P0"
+    }
+  },
+  "components": {
+    "Button": {
+      "focusable": true,
+      "states": {
+        "default": { "bg": "{semantic.color.action-primary}", "text": "{semantic.color.text-on-inverse}", "cursor": "pointer" },
+        "hover": { "bg": "{semantic.color.action-primary-hover}", "transition": "{semantic.motion.hover-feedback}", "note": "hover 不改变尺寸与边框宽度" },
+        "focus": { "outline": "outline 2px solid {semantic.color.focus-ring}", "outlineOffset": "2px", "a11y": "焦点环与按钮底色对比度不低于 3:1，键盘 Tab 可达，激活方式支持 Enter 与 Space" },
+        "active": { "bg": "{semantic.color.action-primary-hover}", "note": "active 与 hover 视觉可相同，不要求区分" },
+        "disabled": { "bg": "{semantic.color.bg-inset}", "text": "{semantic.color.text-muted}", "cursor": "not-allowed", "reasonChannel": "原生 disabled 属性 + 就近说明文字写明需先完成的前置条件", "a11y": "禁用元素移出 Tab 顺序，屏幕阅读器读出 disabled 状态" },
+        "loading": { "note": "宽度锁定为原宽度，左侧加旋转图标，文案改为进行时表述", "a11y": "aria-busy 为 true，禁用重复点击" },
+        "error": { "notApplicable": true, "reason": "按钮自身一般无 error 态。按钮的失败由其触发的业务结果承载，视觉上体现为 Toast 或表单错误。若关联校验失败应在表单层表达，由字段错误提示指出哪个字段不合法，而不是把按钮染成红色。" }
+      }
+    },
+    "Input": {
+      "focusable": true,
+      "states": {
+        "default": { "bg": "{semantic.color.bg-surface}", "border": "{semantic.color.border-strong}", "text": "{semantic.color.text-primary}", "minHeight": "{semantic.size.controlHeight}" },
+        "hover": { "border": "{semantic.color.text-muted}" },
+        "focus": { "border": "{semantic.color.focus-ring}", "outline": "outline 2px solid {semantic.color.focus-ring}", "outlineOffset": "2px", "a11y": "聚焦后焦点环完整可见，被 overflow hidden 的容器裁切时属 P0。屏幕阅读器需朗读 label 而非 placeholder。" },
+        "active": { "note": "active 指输入中，边框保持 focus 样式，不额外变化" },
+        "disabled": { "bg": "{semantic.color.bg-inset}", "text": "{semantic.color.text-muted}", "reasonChannel": "原生 disabled 属性 + label 后的说明文字写明为何不可编辑，如需先完成实名认证", "a11y": "移出 Tab 顺序" },
+        "loading": { "note": "右侧加指示图标，输入内容保持可见不清空", "a11y": "aria-busy 为 true" },
+        "error": { "border": "{semantic.color.action-danger}", "helperText": "字段下方红字说明具体问题与修正方式", "a11y": "aria-invalid 为 true，aria-describedby 关联错误文字，不用只用红色表达" }
+      }
+    },
+    "Select": {
+      "focusable": true,
+      "states": {
+        "default": { "bg": "{semantic.color.bg-surface}", "border": "{semantic.color.border-strong}", "trigger": "右侧 chevron 图标", "minHeight": "{semantic.size.controlHeight}" },
+        "hover": { "border": "{semantic.color.text-muted}" },
+        "focus": { "outline": "outline 2px solid {semantic.color.focus-ring}", "outlineOffset": "2px", "a11y": "触发器与下拉面板同时处于焦点序列，面板内方向键导航，Esc 关闭并把焦点还给触发器" },
+        "active": { "note": "active 等同 focus，面板已展开" },
+        "disabled": { "bg": "{semantic.color.bg-inset}", "text": "{semantic.color.text-muted}", "reasonChannel": "原生 disabled 属性 + 说明缺少哪个前置条件导致不可选", "a11y": "移出 Tab 顺序" },
+        "loading": { "note": "选项未拉取时显示骨架项，禁止显示空面板让用户以为无数据" },
+        "error": { "border": "{semantic.color.action-danger}", "helperText": "说明该字段未选择时的业务后果", "a11y": "aria-invalid 为 true" }
+      }
+    },
+    "Textarea": {
+      "focusable": true,
+      "states": {
+        "default": { "bg": "{semantic.color.bg-surface}", "border": "{semantic.color.border-strong}", "resize": "vertical", "minHeight": "72px" },
+        "hover": { "border": "{semantic.color.text-muted}" },
+        "focus": { "border": "{semantic.color.focus-ring}", "outline": "outline 2px solid {semantic.color.focus-ring}", "outlineOffset": "2px", "a11y": "容器可滚动时焦点环不被裁切，屏幕阅读器读出当前字数上限" },
+        "active": { "note": "输入中边框保持 focus 样式" },
+        "disabled": { "bg": "{semantic.color.bg-inset}", "text": "{semantic.color.text-muted}", "reasonChannel": "原生 disabled 属性 + 说明该内容由系统生成或需先完成前置步骤", "a11y": "移出 Tab 序列" },
+        "loading": { "note": "字数统计区域显示检测中，已输入内容不清空" },
+        "error": { "border": "{semantic.color.action-danger}", "helperText": "超出字数上限时给出当前字数与上限值", "a11y": "aria-invalid 为 true" }
+      }
+    },
+    "Checkbox": {
+      "focusable": true,
+      "states": {
+        "default": { "size": "16px", "border": "{semantic.color.border-strong}", "checkedBg": "{semantic.color.action-primary}" },
+        "hover": { "border": "{semantic.color.action-primary}" },
+        "focus": { "outline": "outline 2px solid {semantic.color.focus-ring}", "outlineOffset": "2px", "a11y": "焦点环包住方框本体，勾选状态不能只用颜色表达，须在框内有对勾形状" },
+        "active": { "note": "按压时方框缩放至 0.9，松开回弹" },
+        "disabled": { "border": "{semantic.color.border-subtle}", "reasonChannel": "原生 disabled 属性 + label 旁说明为何不可勾选", "a11y": "移出 Tab 序列，已勾选的禁用项需保持勾选可见" },
+        "loading": { "notApplicable": true, "reason": "本地勾选无异步过程。如勾选触发异步校验，loading 表现在提交按钮与结果提示上，勾选框本身保持原状。" },
+        "error": { "border": "{semantic.color.action-danger}", "helperText": "表单级错误，写在勾选项下方，说明该组勾选未满足的规则", "a11y": "aria-invalid 为 true，错误文字由 aria-describedby 关联" }
+      }
+    },
+    "Radio": {
+      "focusable": true,
+      "states": {
+        "default": { "size": "16px", "border": "{semantic.color.border-strong}", "checkedBorder": "{semantic.color.action-primary}" },
+        "hover": { "border": "{semantic.color.action-primary}" },
+        "focus": { "outline": "outline 2px solid {semantic.color.focus-ring}", "outlineOffset": "2px", "a11y": "同组单选构成一个 Tab 停靠点，组内用方向键切换。选中态由圆点加粗与颜色双重表达。" },
+        "active": { "note": "按压时圆点缩放至 0.9" },
+        "disabled": { "border": "{semantic.color.border-subtle}", "reasonChannel": "原生 disabled 属性 + 说明该选项为何不可选，如仅支持特定账户类型", "a11y": "移出 Tab 序列，已选中项保持选中可见" },
+        "loading": { "notApplicable": true, "reason": "本地选择无异步过程。选项内容动态拉取时在面板层显示骨架，不在单个 radio 上做 loading。" },
+        "error": { "border": "{semantic.color.action-danger}", "helperText": "写在选项组下方，说明必须选择的原因", "a11y": "组容器 aria-invalid 为 true 并关联错误文字" }
+      }
+    },
+    "Switch": {
+      "focusable": true,
+      "states": {
+        "default": { "trackOff": "{semantic.color.border-strong}", "thumbOn": "{semantic.color.action-primary}" },
+        "hover": { "note": "轨道颜色不变，仅滑块阴影加深，避免误判为已切换" },
+        "focus": { "outline": "outline 2px solid {semantic.color.focus-ring}", "outlineOffset": "2px", "a11y": "焦点环包住整个轨道，滑块位移不得使焦点环被裁切。开关须带开与关的文字标签，不能只靠位置表达状态。" },
+        "active": { "note": "拖动跟手，松手落位并提交" },
+        "disabled": { "trackOff": "{semantic.color.bg-inset}", "reasonChannel": "原生 disabled 属性 + 说明该开关受哪个策略或权限限制", "a11y": "移出 Tab 序列，当前开关位置需保持可见" },
+        "loading": { "note": "提交中滑块保持目标位置并半透明，轨道加指示图标，避免用户重复拨动" },
+        "error": { "border": "{semantic.color.action-danger}", "helperText": "说明该开关导致的校验失败，如开启后某字段变为必填", "a11y": "aria-invalid 为 true" }
+      }
+    },
+    "Table": {
+      "focusable": false,
+      "states": {
+        "default": { "rowBg": "{semantic.color.bg-surface}", "rowBgAlternate": "{semantic.color.bg-subtle}", "border": "{semantic.color.border-subtle}", "font": "{semantic.typography.body}" },
+        "hover": { "rowBg": "{semantic.color.bg-subtle}", "a11y": "hover 高亮仅作辅助，键盘焦点行也须有等价高亮" },
+        "focus": { "a11y": "表格进入 roving tabindex，整表占一个 Tab 停靠点，方向键移动行焦点，焦点行描边 2px 且不被表格容器裁切。表头在窄屏折叠后须保留列名可读。" },
+        "active": { "note": "active 指行选中，描边加粗并显示行操作列" },
+        "disabled": { "reasonChannel": "整表不可用时在表格上方说明原因，如数据源未连接。单行禁用时在该行操作列写明原因", "a11y": "行内按钮移出 Tab 序列并读出 disabled" },
+        "loading": { "note": "首屏用骨架行，保留表头与列宽。翻页加载在表格底部提示，不清空已有数据" },
+        "error": { "helperText": "表格上方错误条说明失败原因与重试按钮，保留筛选条件不重置", "a11y": "错误条 role 为 alert，屏幕阅读器可读出" }
+      }
+    },
+    "Pagination": {
+      "focusable": true,
+      "states": {
+        "default": { "itemSize": "{semantic.size.controlHeight}", "itemBg": "{semantic.color.bg-surface}", "activeBg": "{semantic.color.action-primary}" },
+        "hover": { "note": "页码项底色加深，禁用项无变化" },
+        "focus": { "outline": "outline 2px solid {semantic.color.focus-ring}", "outlineOffset": "2px", "a11y": "当前页同时用底色与 aria-current 表达。跳页输入框独立可聚焦。" },
+        "active": { "note": "按压时页码项缩放至 0.95" },
+        "disabled": { "reasonChannel": "上一页在首页时、下一页在末页时禁用，配 aria-disabled 并在 title 说明已到边界", "a11y": "移出 Tab 序列，读出边界原因" },
+        "loading": { "note": "翻页期间当前页码项加指示图标，保持页码可见" },
+        "error": { "helperText": "翻页失败时保留原表格内容并在分页条上方提示重试" }
+      }
+    },
+    "Modal": {
+      "focusable": true,
+      "states": {
+        "default": { "overlay": "rgba(17, 24, 39, 0.45)", "bg": "{semantic.color.bg-surface}", "radius": "{semantic.radius.surface}", "shadow": "{semantic.shadow.overlay}" },
+        "hover": { "note": "弹层本体不随 hover 变化，内部按钮各自响应 hover" },
+        "focus": { "a11y": "打开时焦点移入弹层并落在首个可聚焦元素或标题，焦点锁定在弹层内，Esc 关闭后焦点归还触发元素" },
+        "active": { "note": "active 指确认按钮按下态" },
+        "disabled": { "reasonChannel": "确认按钮在必填未完成时禁用，按钮下方说明还需完成哪一项", "a11y": "禁用按钮移出 Tab 序列" },
+        "loading": { "note": "提交中锁定关闭按钮与背景内容点击，弹层尺寸锁定", "a11y": "aria-busy 为 true" },
+        "error": { "helperText": "弹层内顶部错误条说明提交失败原因，保留用户已填内容", "a11y": "错误条 role 为 alert" }
+      }
+    },
+    "Drawer": {
+      "focusable": true,
+      "states": {
+        "default": { "overlay": "rgba(17, 24, 39, 0.45)", "bg": "{semantic.color.bg-surface}", "width": "480px", "motion": "{semantic.motion.overlay-enter}" },
+        "hover": { "note": "抽屉本体不随 hover 变化" },
+        "focus": { "a11y": "打开时焦点移入抽屉首个可聚焦元素，焦点锁定，Esc 关闭后焦点归还触发元素。抽屉宽度在 md 以下占满屏宽。" },
+        "active": { "note": "active 指确认按钮按下态" },
+        "disabled": { "reasonChannel": "操作按钮禁用时在抽屉底部说明前置条件", "a11y": "禁用按钮移出 Tab 序列" },
+        "loading": { "note": "加载中先显示抽屉骨架，保持打开态避免用户重复点击触发元素" },
+        "error": { "helperText": "加载失败时抽屉保持打开并显示错误与重试，不自动关闭", "a11y": "错误条 role 为 alert" }
+      }
+    },
+    "Toast": {
+      "focusable": false,
+      "states": {
+        "default": { "bg": "{semantic.color.bg-inverse}", "text": "{semantic.color.text-on-inverse}", "radius": "{semantic.radius.control}" },
+        "hover": { "note": "Toast 为瞬态元素，hover 只用于暂停自动消失计时，不改样式" },
+        "focus": { "a11y": "含操作按钮的 Toast 需可聚焦。纯提示型 Toast 不入 Tab 序列，改用 role 为 status 的礼貌播报。含错误语义的用 role 为 alert。" },
+        "active": { "note": "active 指 Toast 上操作按钮的按下态" },
+        "disabled": { "notApplicable": true, "reason": "Toast 为系统单向通知，无用户交互状态。操作按钮禁用时不展示该 Toast，而非展示一个不可点的提示。" },
+        "loading": { "notApplicable": true, "reason": "Toast 只在结果已知时出现，加载中过程用按钮 loading 态或骨架表达。" },
+        "error": { "bg": "{semantic.color.action-danger}", "text": "{semantic.color.text-on-inverse}", "duration": "不自动消失直到用户处理", "a11y": "role 为 alert，含重试操作按钮" }
+      }
+    }
+  }
+}
