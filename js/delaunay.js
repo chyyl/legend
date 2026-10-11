@@ -21,7 +21,8 @@ export function delaunayTriangulate(points) {
   let triangles = [[n, n + 1, n + 2]];
 
   function circumcircleContains(tri, p) {
-    const [a, b, c] = tri.map(i => allPoints[i]);
+    // Direct indexing (no allocation) — this runs O(n²) times
+    const a = allPoints[tri[0]], b = allPoints[tri[1]], c = allPoints[tri[2]];
     const dx = a.x - p.x, dy = a.y - p.y;
     const ex = b.x - p.x, ey = b.y - p.y;
     const fx = c.x - p.x, fy = c.y - p.y;
@@ -39,12 +40,15 @@ export function delaunayTriangulate(points) {
   for (const pid of order) {
     const p = points[pid];
     const badTriangles = [];
+    const kept = [];
 
-    for (let i = triangles.length - 1; i >= 0; i--) {
-      if (circumcircleContains(triangles[i], p)) {
-        badTriangles.push(triangles.splice(i, 1)[0]);
-      }
+    // Single partition pass — avoids O(n) splice per bad triangle
+    for (let i = 0; i < triangles.length; i++) {
+      const tri = triangles[i];
+      if (circumcircleContains(tri, p)) badTriangles.push(tri);
+      else kept.push(tri);
     }
+    triangles = kept;
 
     // Find boundary edges (edges shared by only one bad triangle)
     const edgeCount = new Map();
