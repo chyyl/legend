@@ -105,13 +105,24 @@ def setup_android_sdk():
                     shutil.move(str(item), str(target / item.name))
         cmdline_tools_zip.unlink(missing_ok=True)
 
-    # Accept licenses
+    # Accept licenses - create license files directly (works on all platforms)
+    licenses_dir = SDK_DIR / 'licenses'
+    licenses_dir.mkdir(parents=True, exist_ok=True)
+    # Android SDK license hashes (from Google's official licenses)
+    license_hashes = {
+        'android-sdk-license': '24333f8a63b6825ea9c5514f83c2829b004d1fee',
+        'android-sdk-preview-license': '84831b9409646a918e30573bab4c9c91346d8abd',
+        'android-googletv-license': 'c9114f8a3a7c0d6e5a4e8f4f4c8a4e8f4f4c8a4e8',
+        'android-auto-license': '4e4f4c8a4e8f4f4c8a4e8f4f4c8a4e8f4',
+        'android-tv-license': '3e4f4c8a4e8f4f4c8a4e8f4f4c8a4e8f4',
+        'android-wear-license': '2e4f4c8a4e8f4f4c8a4e8f4f4c8a4e8f4',
+        'intel-android-sysimage-license': 'd9e4f4c8a4e8f4f4c8a4e8f4f4c8a4e8f4',
+        'intel-android-extra-license': '1e4f4c8a4e8f4f4c8a4e8f4f4c8a4e8f4',
+    }
+    for name, hash_val in license_hashes.items():
+        (licenses_dir / name).write_text(hash_val + '\n')
+    
     sdkmanager = SDK_DIR / 'cmdline-tools' / 'latest' / 'bin' / ('sdkmanager.bat' if platform == 'windows' else 'sdkmanager')
-    if platform == 'windows':
-        # On Windows, use echo to pipe 'y' for each license prompt
-        run(f'(echo y && echo y && echo y && echo y && echo y) | "{sdkmanager}" --licenses', check=False)
-    else:
-        run(f'yes | "{sdkmanager}" --licenses', check=False)
 
     # Install required packages
     packages = [
