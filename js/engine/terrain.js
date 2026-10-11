@@ -177,6 +177,8 @@ function buildChunks(points, triangles, vertices, width, height, chunkSize) {
   for (let row = 0; row < rows; row++) {
     for (let col = 0; col < cols; col++) {
       const chunk = chunks[row * cols + col];
+      chunk.cx = col; // chunk grid coords (renderer keys bake caches on these)
+      chunk.cy = row;
       chunk.bounds = {
         minX: col * chunkSize,
         minY: row * chunkSize,

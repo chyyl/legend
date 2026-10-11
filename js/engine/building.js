@@ -396,25 +396,31 @@ export function generateBuildingCluster({
   const prng = createPRNG(seed);
   const buildings = [];
 
-  // Generate candidate positions using Poisson disc
+  // Generate candidate positions using Poisson disc growth
   const candidates = [];
   const cellSize = 20;
   const cols = Math.ceil(radius * 2 / cellSize);
   const rows = Math.ceil(radius * 2 / cellSize);
-  const grid = new Array(cols * rows).fill(-1);
+  const occupied = new Array(cols * rows).fill(false); // cell → building placed
+
+  function cellIndex(x, y) {
+    const gx = Math.floor((x - centerX + radius) / cellSize);
+    const gy = Math.floor((y - centerY + radius) / cellSize);
+    if (gx < 0 || gx >= cols || gy < 0 || gy >= rows) return -1;
+    return gy * cols + gx;
+  }
 
   function addCandidate(x, y) {
-    candidates.push({ x, y });
-    const gx = Math.floor((x + radius) / cellSize);
-    const gy = Math.floor((y + radius) / cellSize);
-    if (gx >= 0 && gx < cols && gy >= 0 && gy < rows) {
-      grid[gy * cols + gx] = candidates.length - 1;
-    }
+    const ci = cellIndex(x, y);
+    if (ci < 0 || occupied[ci]) return; // outside radius or cell already has a building
+    candidates.push({ x, y, cell: ci });
   }
 
   // Initial candidate
   addCandidate(centerX + prng.nextFloat(-radius * 0.3, radius * 0.3),
                centerY + prng.nextFloat(-radius * 0.3, radius * 0.3));
+
+  const MIN_DIST_SQ = 625; // 25 units between building centers
 
   while (candidates.length > 0 && buildings.length < buildingCount) {
     const idx = prng.nextInt(candidates.length);
@@ -425,7 +431,7 @@ export function generateBuildingCluster({
     let valid = true;
     for (const b of buildings) {
       const dx = b.x - cand.x, dy = b.y - cand.y;
-      if (dx * dx + dy * dy < 400) { valid = false; break; }
+      if (dx * dx + dy * dy < MIN_DIST_SQ) { valid = false; break; }
     }
 
     if (!valid) continue;
@@ -448,6 +454,19 @@ export function generateBuildingCluster({
       x: cand.x, y: cand.y,
       type, size, rotation
     }));
+
+    // Mark cell occupied, then grow: spawn neighbor candidates around the placed building
+    if (cand.cell >= 0) occupied[cand.cell] = true;
+    const nDirs = 4 + prng.nextInt(3); // 4–6 neighbor probes
+    for (let d = 0; d < nDirs; d++) {
+      const ang = prng.next() * Math.PI * 2;
+      const dist = cellSize * (1.4 + prng.next() * 1.0); // 28–48 units
+      const nx = cand.x + Math.cos(ang) * dist;
+      const ny = cand.y + Math.sin(ang) * dist;
+      const ddx = nx - centerX, ddy = ny - centerY;
+      if (ddx * ddx + ddy * ddy > radius * radius) continue; // stay in cluster radius
+      addCandidate(nx, ny);
+    }
   }
 
   return buildings;

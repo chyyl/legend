@@ -25,11 +25,11 @@ function runSmokeWorld() {
 
   // 1. Generate terrain
   setGlobalSeed(SEED);
-  const terrain = generateTerrain({ seed: SEED, width: 200, height: 200, chunkSize: 64 });
-  assert(terrain.pointCount > 50, `Terrain has ${terrain.pointCount} vertices`);
+  const terrain = generateTerrain({ seed: SEED, width: 400, height: 400, chunkSize: 64 });
+  assert(terrain.pointCount > 100, `Terrain has ${terrain.pointCount} vertices`); // GRID_SPACING=32 → 13×13=169 for 400×400
   assert(terrain.triangleCount > 10, `Terrain has ${terrain.triangleCount} triangles`);
-  assert(terrain.bounds.maxX === 200, 'World width is 200');
-  assert(terrain.bounds.maxY === 200, 'World height is 200');
+  assert(terrain.bounds.maxX === 400, 'World width is 400');
+  assert(terrain.bounds.maxY === 400, 'World height is 400');
 
   // 2. Check biomes present
   const biomes = new Set();

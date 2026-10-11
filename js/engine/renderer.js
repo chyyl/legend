@@ -3,7 +3,7 @@
  * Single drawImage per frame via pre-baked chunk OffscreenCanvases
  */
 
-import { CHUNK_SIZE } from './terrain.js';
+import { CHUNK_SIZE, GRID_SPACING } from './terrain.js';
 
 export const LAYERS = {
   TERRAIN: 0,
@@ -130,16 +130,16 @@ export function createRenderer(canvas, opts = {}) {
       const tex = await getSplatTexture(SPLAT_LAYERS[layer]);
       if (!tex) continue;
 
-      octx.save();
-      octx.globalCompositeOperation = layer === 0 ? 'source-over' : 'lighter';
-      octx.globalAlpha = 1;
+      // tmp = texture masked by the weight map (alpha channel = weight)
+      const tmp = new OffscreenCanvas(w * bakeScale, h * bakeScale);
+      const tctx = tmp.getContext('2d');
+      tctx.drawImage(tex, 0, 0, w * bakeScale, h * bakeScale);
+      tctx.globalCompositeOperation = 'destination-in';
+      tctx.drawImage(weightMap, 0, 0, w * bakeScale, h * bakeScale);
 
-      // Draw weight map as alpha mask, then texture
-      // Simplified: draw texture modulated by weight
-      octx.drawImage(weightMap, 0, 0, w * bakeScale, h * bakeScale);
-      octx.globalCompositeOperation = 'source-in';
-      octx.drawImage(tex, 0, 0, w * bakeScale, h * bakeScale);
-      octx.restore();
+      // First layer paints, remaining layers add on top
+      octx.globalCompositeOperation = layer === 0 ? 'source-over' : 'lighter';
+      octx.drawImage(tmp, 0, 0);
     }
 
     chunkCanvases.set(key, oc);
@@ -242,10 +242,11 @@ export function createRenderer(canvas, opts = {}) {
           const weight = biomeToWeight(biome, layer);
 
           const idx = (py * resolution + px) * 4;
-          data[idx] = weight * 255;
-          data[idx + 1] = weight * 255;
-          data[idx + 2] = weight * 255;
-          data[idx + 3] = 255;
+          // Weight lives in the ALPHA channel — bakeChunk masks textures with it
+          data[idx] = 255;
+          data[idx + 1] = 255;
+          data[idx + 2] = 255;
+          data[idx + 3] = Math.round(weight * 255);
         }
       }
       octx.putImageData(imgData, 0, 0);
@@ -256,12 +257,13 @@ export function createRenderer(canvas, opts = {}) {
   }
 
   function getBiomeAtPoint(terrain, x, y) {
-    // Simplified - in practice use terrain's spatial index
+    // Nearest-vertex lookup on the regular grid (stride = GRID_SPACING)
     const { vertices, bounds } = terrain;
-    const gridX = Math.floor(x / 16);
-    const gridY = Math.floor(y / 16);
-    const cols = Math.ceil((bounds.maxX - bounds.minX) / 16) + 1;
-    const idx = Math.min(vertices.length / 7 - 1, Math.max(0, gridY * cols + gridX));
+    const cols = Math.ceil((bounds.maxX - bounds.minX) / GRID_SPACING) + 1;
+    const rows = Math.ceil((bounds.maxY - bounds.minY) / GRID_SPACING) + 1;
+    const gridX = Math.min(cols - 1, Math.max(0, Math.floor(x / GRID_SPACING)));
+    const gridY = Math.min(rows - 1, Math.max(0, Math.floor(y / GRID_SPACING)));
+    const idx = Math.min(vertices.length / 7 - 1, gridY * cols + gridX);
     return vertices[idx * 7 + 3];
   }
 
@@ -323,12 +325,18 @@ export function createRenderer(canvas, opts = {}) {
       if (!oc && !chunkDirty.has(key)) {
         // Generate weight maps and schedule bake
         const weights = generateSplatWeights(chunk, terrain);
-        bakeChunk(cx, cy, chunk, terrain, weights);
         chunkDirty.add(key);
+        bakeChunk(cx, cy, chunk, terrain, weights).catch(err => {
+          console.error('Chunk bake failed:', key, err);
+          chunkDirty.delete(key); // allow retry
+        });
       } else if (oc) {
-        // Draw pre-baked chunk
+        // Draw pre-baked chunk (1px overlap hides bilinear seams between chunks)
         const { bounds } = chunk;
-        ctx.drawImage(oc, bounds.minX, bounds.minY, bounds.maxX - bounds.minX, bounds.maxY - bounds.minY);
+        ctx.drawImage(oc,
+          bounds.minX - 1, bounds.minY - 1,
+          (bounds.maxX - bounds.minX) + 2,
+          (bounds.maxY - bounds.minY) + 2);
         stats.drawCalls++;
       }
     }
