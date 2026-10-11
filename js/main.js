@@ -88,6 +88,15 @@ const perf = {
 };
 
 async function init() {
+  // Real loading progress (replaces index.html's fake timer)
+  const setProgress = (pct, text) => {
+    const bar = document.getElementById('loading-progress');
+    const label = document.getElementById('loading-text');
+    if (bar) bar.style.width = pct + '%';
+    if (label && text) label.textContent = text;
+  };
+  const nextFrame = () => new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
+
   // Load settings
   loadSettings();
 
@@ -96,6 +105,8 @@ async function init() {
   if (!canvas) throw new Error('Canvas not found');
 
   // Initialize renderer
+  setProgress(10, '初始化渲染器...');
+  await nextFrame();
   renderer = createRenderer(canvas, { dpr: Math.min(window.devicePixelRatio || 1, 2) });
 
   // Initialize audio
@@ -110,15 +121,19 @@ async function init() {
   setGlobalSeed(seed);
 
   // Generate terrain
-  console.log('Generating terrain...');
+  setProgress(25, '生成地形 (Delaunay 网格)...');
+  await nextFrame();
   terrain = generateTerrain({ seed, width: 1000, height: 1000 });
   console.log(`Terrain: ${terrain.pointCount} vertices, ${terrain.triangleCount} triangles`);
 
   // Generate buildings
-  console.log('Generating buildings...');
+  setProgress(60, '生成建筑与区域...');
+  await nextFrame();
   buildings = generateBuildingsForWorld(terrain, seed);
 
   // Initialize gameplay systems
+  setProgress(75, '初始化战斗与掉落系统...');
+  await nextFrame();
   liberation = createLiberationSystem({ seed });
   loot = createLootSystem({ rng: globalPRNG });
 
@@ -131,6 +146,8 @@ async function init() {
   combat.on('kill', onEntityKilled);
 
   // Initialize NPCs
+  setProgress(85, '初始化NPC与界面...');
+  await nextFrame();
   npcSystem = createNPCSystem({ rng: globalPRNG, lootSystem: loot, liberationSystem: liberation });
   for (const zone of liberation.getAllZones()) {
     const zoneNPCs = npcSystem.initializeZoneNPCs(zone.id);
@@ -158,6 +175,10 @@ async function init() {
   // Resume audio on first interaction
   document.addEventListener('click', () => audio.resume(), { once: true });
   document.addEventListener('keydown', () => audio.resume(), { once: true });
+
+  // Hide loading screen — game is ready
+  setProgress(100, '准备就绪');
+  document.getElementById('loading')?.classList.add('hidden');
 
   console.log('Game initialized successfully');
 }
@@ -696,7 +717,7 @@ function saveSettings() {
   } catch (e) { console.warn('Failed to save settings'); }
 }
 
-// Export for global access (debugging)
+// Export for global access (debugging + E2E tests)
 window.game = {
   getPlayer: () => player,
   getTerrain: () => terrain,
@@ -704,16 +725,33 @@ window.game = {
   getEntities: () => entities,
   getLiberation: () => liberation,
   getSettings: () => settings,
+  getCombat: () => combat,
+  getLoot: () => loot,
+  getNPCSystem: () => npcSystem,
+  getRadialMenu: () => radialMenu,
+  getHUD: () => hud,
+  perf,
+  get paused() { return paused; },
   saveSettings,
   togglePause,
   debugMode: () => debugMode
 };
 
-// Start when DOM ready
+// Start when DOM ready, surface init failures on the error overlay
+function startInit() {
+  init().catch(err => {
+    console.error('Game init failed:', err);
+    const overlay = document.getElementById('error-overlay');
+    const msg = document.getElementById('error-message');
+    if (msg) msg.textContent = err?.message || String(err);
+    if (overlay) overlay.classList.add('visible');
+    document.getElementById('loading')?.classList.add('hidden');
+  });
+}
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', init);
+  document.addEventListener('DOMContentLoaded', startInit);
 } else {
-  init();
+  startInit();
 }
 
 export { init, player, terrain, buildings, entities, liberation, combat, loot, npcSystem, renderer, audio, settings };
