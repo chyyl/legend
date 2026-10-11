@@ -68,9 +68,11 @@ export function delaunayTriangulate(points) {
       if (rec.count === 1) polygon.push([rec.a, rec.b]);
     }
 
-    // Re-triangulate polygon
+    // Re-triangulate polygon (force CCW so circumcircle tests stay valid)
     for (const [a, b] of polygon) {
-      triangles.push([a, b, pid]);
+      const pa = allPoints[a], pb = allPoints[b], pp = allPoints[pid];
+      const cross = (pb.x - pa.x) * (pp.y - pa.y) - (pb.y - pa.y) * (pp.x - pa.x);
+      triangles.push(cross >= 0 ? [a, b, pid] : [b, a, pid]);
     }
   }
 
