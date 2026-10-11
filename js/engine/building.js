@@ -215,7 +215,7 @@ function expandSymbol(symbol, geom, ctx) {
         [-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]
       ].map(([vx, vy]) => rotatePoint(vx, vy, rotation));
       const baseIdx = geom.vertices.length / 2;
-      for (const [vx, vy] of pts) {
+      for (const { x: vx, y: vy } of pts) {
         geom.vertices.push([x + vx, y + vy]);
         geom.uvs.push([0.5 + vx / w, 0.5 + vy / h]);
       }
@@ -281,7 +281,7 @@ function expandSymbol(symbol, geom, ctx) {
         [-segW/2, -segH/2], [segW/2, -segH/2], [segW/2, segH/2], [-segW/2, segH/2]
       ].map(([vx, vy]) => rotatePoint(vx, vy, rotation));
       const baseIdx = geom.vertices.length / 2;
-      for (const [vx, vy] of pts) {
+      for (const { x: vx, y: vy } of pts) {
         geom.vertices.push([x + vx, y + vy]);
         geom.uvs.push([0.5 + vx / segW, 0.5 + vy / segH]);
       }
