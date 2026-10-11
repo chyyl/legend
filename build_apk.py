@@ -442,7 +442,7 @@ def build_apk(clean=False):
         DIST_DIR.mkdir(parents=True, exist_ok=True)
         output_apk = DIST_DIR / 'legend.apk'
         shutil.copy2(apk_files[0], output_apk)
-        print(f'✅ APK built successfully: {output_apk}')
+        print(f'[OK] APK built successfully: {output_apk}')
         print(f'   Size: {output_apk.stat().st_size / 1024 / 1024:.1f} MB')
     else:
         raise RuntimeError('APK not found in build outputs')
