@@ -139,7 +139,7 @@ class NetworkManager {
       this.reconnectAttempts++
       setTimeout(() => {
         if (this.room) {
-          this.room.reconnect().catch(() => this.attemptReconnect())
+          ;(this.room as any).reconnect?.().catch(() => this.attemptReconnect())
         }
       }, 2000 * this.reconnectAttempts)
     }
@@ -212,7 +212,7 @@ class NetworkManager {
   }
 
   isHost(): boolean {
-    return this.room?.sessionId === this.playerId && this.room?.state?.players?.get(this.playerId)?.isHost
+    return this.room?.sessionId === this.playerId && (this.room?.state?.players?.get(this.playerId)?.isHost ?? false)
   }
 
   getPlayers(): PlayerState[] {

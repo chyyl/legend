@@ -41,7 +41,7 @@ export class BootScene extends Scene {
   }
 
   private generatePlaceholderAssets() {
-    const graphics = this.make.graphics({ x: 0, y: 0, add: false })
+    const graphics = this.make.graphics({ x: 0, y: 0, add: false } as any)
     
     // Loading background
     graphics.fillStyle(0x1a1a2e)
@@ -59,8 +59,6 @@ export class BootScene extends Scene {
     graphics.fillStyle(0xff9900)
     graphics.fillRect(0, 0, 200, 100)
     graphics.fillStyle(0xffffff)
-    graphics.fontSize = '48px'
-    graphics.fillText('LEGEND', 20, 70)
     graphics.generateTexture('logo', 200, 100)
     graphics.clear()
     
@@ -94,7 +92,7 @@ export class BootScene extends Scene {
   }
 
   private generateStickFigure(key: string, color: number, running = false, attacking = false, scale = 1) {
-    const graphics = this.make.graphics({ x: 0, y: 0, add: false })
+    const graphics = this.make.graphics({ x: 0, y: 0, add: false } as any)
     const size = 32 * scale
     const center = size / 2
     
@@ -132,7 +130,7 @@ export class BootScene extends Scene {
   }
 
   private generateWeapon(key: string, color: number) {
-    const graphics = this.make.graphics({ x: 0, y: 0, add: false })
+    const graphics = this.make.graphics({ x: 0, y: 0, add: false } as any)
     const size = 48
     graphics.lineStyle(4, color, 1)
     graphics.fillStyle(color, 1)
@@ -173,7 +171,7 @@ export class BootScene extends Scene {
   }
 
   private generateTiles() {
-    const graphics = this.make.graphics({ x: 0, y: 0, add: false })
+    const graphics = this.make.graphics({ x: 0, y: 0, add: false } as any)
     const tileSize = 16
     const colors: Record<string, number> = {
       grass: 0x2e8b2e, dirt: 0x8b6914, water: 0x1e90ff,
@@ -195,7 +193,7 @@ export class BootScene extends Scene {
   }
 
   private generateUI() {
-    const graphics = this.make.graphics({ x: 0, y: 0, add: false })
+    const graphics = this.make.graphics({ x: 0, y: 0, add: false } as any)
     
     // HP bar
     graphics.fillStyle(0x000000, 0.8)
@@ -253,7 +251,7 @@ export class BootScene extends Scene {
   }
 
   private generateParticles() {
-    const graphics = this.make.graphics({ x: 0, y: 0, add: false })
+    const graphics = this.make.graphics({ x: 0, y: 0, add: false } as any)
     
     // Damage number particles
     for (let i = 0; i < 10; i++) {

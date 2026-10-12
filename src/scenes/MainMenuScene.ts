@@ -104,7 +104,7 @@ export class MainMenuScene extends Scene {
       
       container.on('pointerdown', btn.callback)
       
-      this.menuContainer.add(container)
+      this.menuContainer!.add(container)
     })
     
     const version = this.add.text(this.scale.width - 20, this.scale.height - 20, 'v0.1.0', {
@@ -167,7 +167,7 @@ export class MainMenuScene extends Scene {
         this.showSaveSelect()
       })
       
-      this.menuContainer.add(container)
+      this.menuContainer!.add(container)
     })
     
     const backBtn = this.createButton(0, 300, '返回', () => this.createMenu())
@@ -212,8 +212,8 @@ export class MainMenuScene extends Scene {
     const name = prompt('输入房间名称:', 'Legend Room')
     if (!name) return
     
-    const difficulty = parseFloat(prompt('难度系数 (0-2):', '0.9')) || 0.9
-    const maxPlayers = parseInt(prompt('最大玩家数 (1-4):', '4')) || 4
+    const difficulty = parseFloat(prompt('难度系数 (0-2):', '0.9') ?? '0.9') || 0.9
+    const maxPlayers = parseInt(prompt('最大玩家数 (1-4):', '4') ?? '4') || 4
     
     const room = await networkManager.createRoom(name, difficulty, maxPlayers)
     if (room) {

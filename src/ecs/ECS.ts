@@ -229,6 +229,28 @@ export interface ItemData {
   equipmentSlot?: string
 }
 
+export interface ComponentMap {
+  position: PositionComponent
+  velocity: VelocityComponent
+  sprite: SpriteComponent
+  animation: AnimationComponent
+  health: HealthComponent
+  stats: StatsComponent
+  input: InputComponent
+  ai: AIComponent
+  weapon: WeaponComponent
+  equipment: EquipmentComponent
+  inventory: InventoryComponent
+  level: LevelComponent
+  bonds: BondsComponent
+  projectile: ProjectileComponent
+  pickup: PickupComponent
+  npc: NPCComponent
+  teleport: TeleportComponent
+  enemy: EnemyComponent
+  player: PlayerComponent
+}
+
 export class Entity {
   id: string
   components: Map<ComponentType, Component> = new Map()
@@ -244,8 +266,8 @@ export class Entity {
     return component
   }
 
-  get<T extends Component>(type: ComponentType): T | null {
-    return this.components.get(type) as T | null
+  get<K extends ComponentType>(type: K): ComponentMap[K] | null {
+    return this.components.get(type) as ComponentMap[K] | null
   }
 
   has(type: ComponentType): boolean {

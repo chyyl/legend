@@ -295,8 +295,8 @@ export class MapGenerator {
     const chunkX = Math.floor(tileX / CHUNK_SIZE)
     const chunkY = Math.floor(tileY / CHUNK_SIZE)
     const chunk = this.getChunk(chunkX, chunkY)
-    const localX = tileX % CHUNK_SIZE
-    const localY = tileY % CHUNK_SIZE
+    let localX = tileX % CHUNK_SIZE
+    let localY = tileY % CHUNK_SIZE
     if (localX < 0) localX += CHUNK_SIZE
     if (localY < 0) localY += CHUNK_SIZE
     const tileIndex = chunk.tiles[localY * CHUNK_SIZE + localX]
@@ -309,8 +309,8 @@ export class MapGenerator {
     const chunkX = Math.floor(tileX / CHUNK_SIZE)
     const chunkY = Math.floor(tileY / CHUNK_SIZE)
     const chunk = this.getChunk(chunkX, chunkY)
-    const localX = tileX % CHUNK_SIZE
-    const localY = tileY % CHUNK_SIZE
+    let localX = tileX % CHUNK_SIZE
+    let localY = tileY % CHUNK_SIZE
     const tileIndex = chunk.tiles[localY * CHUNK_SIZE + localX]
     const reverseMap: Record<number, TileType> = {}
     Object.entries(TILE_MAP).forEach(([k, v]) => { reverseMap[v] = k as TileType })

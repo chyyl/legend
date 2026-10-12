@@ -100,9 +100,10 @@ class SaveManager {
     try {
       const stored = localStorage.getItem(SAVE_KEY)
       if (stored) {
-        this.saveData = JSON.parse(stored)
-        if (this.saveData.version !== '0.1.0') {
-          this.migrateSave(this.saveData)
+        const parsed: SaveData = JSON.parse(stored)
+        this.saveData = parsed
+        if (parsed.version !== '0.1.0') {
+          this.migrateSave(parsed)
         }
       }
     } catch (e) {

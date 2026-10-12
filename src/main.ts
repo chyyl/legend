@@ -4,7 +4,6 @@ import { PreloadScene } from './scenes/PreloadScene'
 import { MainMenuScene } from './scenes/MainMenuScene'
 import { GameScene } from './scenes/GameScene'
 import { UIScene } from './scenes/UIScene'
-import { GameConfig } from './config/GameConfig'
 import { saveManager } from './systems/SaveManager'
 import { networkManager } from './network/NetworkManager'
 
