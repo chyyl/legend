@@ -1,5 +1,5 @@
 import { Scene, GameObjects, Cameras } from 'phaser'
-import { World, Entity, createEntity } from '../ecs/ECS'
+import { World, Entity } from '../ecs/ECS'
 import { MapGenerator, ChunkData } from '../systems/MapGenerator'
 import { CombatSystem } from '../systems/CombatSystem'
 import { AISystem, MovementSystem, InputSystem } from '../systems/AISystem'
@@ -18,6 +18,7 @@ export class GameScene extends Scene {
   private playerEntity!: Entity
   private camera!: Cameras.Scene2D.Camera
   private minimap!: GameObjects.RenderTexture
+  private minimapOverlay!: GameObjects.Graphics
   private chunkGraphics: Map<string, GameObjects.Graphics> = new Map()
   private loadedChunks: Set<string> = new Set()
   private viewRadiusChunks = 4
@@ -59,6 +60,17 @@ export class GameScene extends Scene {
     this.world.addSystem(this.combatSystem)
     
     this.loadChunksAroundPlayer()
+  }
+
+  private loadChunksAroundPlayer() {
+    const centerChunkX = Math.floor((REGIONS[0].x + REGIONS[0].width / 2) / (CHUNK_SIZE * TILE_SIZE))
+    const centerChunkY = Math.floor((REGIONS[0].y + REGIONS[0].height / 2) / (CHUNK_SIZE * TILE_SIZE))
+    for (let y = -this.viewRadiusChunks; y <= this.viewRadiusChunks; y++) {
+      for (let x = -this.viewRadiusChunks; x <= this.viewRadiusChunks; x++) {
+        this.loadChunk(centerChunkX + x, centerChunkY + y)
+        this.loadedChunks.add(`${centerChunkX + x},${centerChunkY + y}`)
+      }
+    }
   }
 
   private generateSeed(): string {
@@ -103,7 +115,7 @@ export class GameScene extends Scene {
     const level = this.playerEntity.get('level')!
     level.level = playerData.level
     level.exp = playerData.exp
-    level.attributePoints = playerData.attributes ? Object.values(playerData.attributes).reduce((a: number, b: number) => a + b, 0) - 20 : 0
+    level.attributePoints = playerData.attributes ? (Object.values(playerData.attributes) as number[]).reduce((a, b) => a + b, 0) - 20 : 0
     level.attributes = playerData.attributes || level.attributes
     
     const inventory = this.playerEntity.get('inventory')!
@@ -129,6 +141,10 @@ export class GameScene extends Scene {
     bg.fillRoundedRect(this.scale.width - size - 10, 10, size, size, 10)
     bg.setScrollFactor(0)
     bg.setDepth(Z_LAYERS.ui - 1)
+
+    this.minimapOverlay = this.add.graphics()
+    this.minimapOverlay.setScrollFactor(0)
+    this.minimapOverlay.setDepth(Z_LAYERS.ui + 1)
   }
 
   private setupInput() {
@@ -217,11 +233,11 @@ export class GameScene extends Scene {
         
         const textureKey = `tile_${tileType}`
         if (this.textures.exists(textureKey)) {
-          graphics.drawTexture(textureKey, worldX, worldY, tileSize, tileSize)
+          graphics.fillStyle(this.getTileColor(tileType))
         } else {
           graphics.fillStyle(this.getTileColor(tileType))
-          graphics.fillRect(worldX, worldY, tileSize, tileSize)
         }
+        graphics.fillRect(worldX, worldY, tileSize, tileSize)
       }
     }
     
@@ -284,8 +300,9 @@ export class GameScene extends Scene {
     
     const px = playerPos.x * scale
     const py = playerPos.y * scale
-    this.minimap.fillStyle(0x00ffff, 1)
-    this.minimap.fillCircle(px, py, 3)
+    this.minimapOverlay.clear()
+    this.minimapOverlay.fillStyle(0x00ffff, 1)
+    this.minimapOverlay.fillCircle(px, py, 3)
     
     for (const region of REGIONS) {
       if (this.isRegionDiscovered(region.id)) {
@@ -293,8 +310,8 @@ export class GameScene extends Scene {
         const ry = region.y * scale
         const rw = region.width * scale
         const rh = region.height * scale
-        this.minimap.lineStyle(1, 0xff9900, 0.5)
-        this.minimap.strokeRect(rx, ry, rw, rh)
+        this.minimapOverlay.lineStyle(1, 0xff9900, 0.5)
+        this.minimapOverlay.strokeRect(rx, ry, rw, rh)
       }
     }
   }

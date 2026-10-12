@@ -89,7 +89,8 @@ export class CombatSystem extends System {
     const targetEnemy = target.get('enemy')
     if (targetEnemy) {
       const enemyConfig = ENEMY_CONFIG[targetEnemy.enemyType]
-      damage *= enemyConfig.dmgMul
+      const dmgMul = Array.isArray(enemyConfig.dmgMul) ? (enemyConfig.dmgMul[0] + enemyConfig.dmgMul[1]) / 2 : enemyConfig.dmgMul
+      damage *= dmgMul
     }
 
     const bonds = attacker.get('bonds')

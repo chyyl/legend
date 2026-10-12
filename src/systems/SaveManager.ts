@@ -112,11 +112,13 @@ class SaveManager {
     return this.saveData
   }
 
-  saveGame(data: Partial<SaveData>) {
+  saveGame(data: { player?: Partial<SaveData['player']>; world?: Partial<SaveData['world']> } & Record<string, unknown>) {
     if (!this.saveData) return
     this.saveData = {
       ...this.saveData,
       ...data,
+      player: { ...this.saveData.player, ...(data.player || {}) },
+      world: { ...this.saveData.world, ...(data.world || {}) },
       timestamp: Date.now(),
       version: '0.1.0'
     }

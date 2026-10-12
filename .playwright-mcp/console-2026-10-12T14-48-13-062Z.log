@@ -1,0 +1,34 @@
+[     600ms] [LOG] %c %c %c %c %c Phaser v3.90.0 (WebGL | Web Audio) %c https://phaser.io/v390 background: #ff0000 background: #ffff00 background: #00ff00 background: #00ffff color: #ffffff; background: #000000 background: transparent @ http://localhost:3000/node_modules/.vite/deps/phaser.js?v=870bee00:8455
+[     736ms] [WARNING] <meta name="apple-mobile-web-app-capable" content="yes"> is deprecated. Please include <meta name="mobile-web-app-capable" content="yes"> @ http://localhost:3000/:0
+[     745ms] [ERROR] Failed to process file: %s "%s" image loading_bg @ http://localhost:3000/node_modules/.vite/deps/phaser.js?v=870bee00:66275
+[     745ms] [ERROR] Failed to process file: %s "%s" image loading_bar @ http://localhost:3000/node_modules/.vite/deps/phaser.js?v=870bee00:66275
+[     746ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/favicon.ico:0
+[     746ms] [ERROR] Failed to process file: %s "%s" image logo @ http://localhost:3000/node_modules/.vite/deps/phaser.js?v=870bee00:66275
+[     756ms] [WARNING] Error while trying to use the following icon from the Manifest: http://localhost:3000/icons/icon-144.png (Download error or resource isn't a valid image) @ http://localhost:3000/:0
+[     769ms] [ERROR] Error decoding audio: bgm_main -  Unable to decode audio data @ http://localhost:3000/node_modules/.vite/deps/phaser.js?v=870bee00:67989
+[     769ms] [ERROR] Failed to process file: %s "%s" audio bgm_main @ http://localhost:3000/node_modules/.vite/deps/phaser.js?v=870bee00:66275
+[     771ms] Unable to decode audio data
+[     775ms] [ERROR] Error decoding audio: sfx_swing -  Unable to decode audio data @ http://localhost:3000/node_modules/.vite/deps/phaser.js?v=870bee00:67989
+[     775ms] [ERROR] Failed to process file: %s "%s" audio sfx_swing @ http://localhost:3000/node_modules/.vite/deps/phaser.js?v=870bee00:66275
+[     776ms] [ERROR] Failed to process file: %s "%s" xml pixel_font @ http://localhost:3000/node_modules/.vite/deps/phaser.js?v=870bee00:66275
+[     776ms] [ERROR] File failed: %s "%s" (via %s "%s") bitmapfont pixel_font xml pixel_font @ http://localhost:3000/node_modules/.vite/deps/phaser.js?v=870bee00:67293
+[     777ms] [ERROR] File failed: %s "%s" (via %s "%s") bitmapfont pixel_font xml pixel_font @ http://localhost:3000/node_modules/.vite/deps/phaser.js?v=870bee00:67293
+[     778ms] Unable to decode audio data
+[     777ms] [ERROR] Error decoding audio: bgm_battle -  Unable to decode audio data @ http://localhost:3000/node_modules/.vite/deps/phaser.js?v=870bee00:67989
+[     777ms] [ERROR] Failed to process file: %s "%s" audio bgm_battle @ http://localhost:3000/node_modules/.vite/deps/phaser.js?v=870bee00:66275
+[     777ms] [ERROR] Error decoding audio: sfx_hit -  Unable to decode audio data @ http://localhost:3000/node_modules/.vite/deps/phaser.js?v=870bee00:67989
+[     777ms] [ERROR] Failed to process file: %s "%s" audio sfx_hit @ http://localhost:3000/node_modules/.vite/deps/phaser.js?v=870bee00:66275
+[     777ms] [ERROR] Error decoding audio: sfx_levelup -  Unable to decode audio data @ http://localhost:3000/node_modules/.vite/deps/phaser.js?v=870bee00:67989
+[     777ms] [ERROR] Failed to process file: %s "%s" audio sfx_levelup @ http://localhost:3000/node_modules/.vite/deps/phaser.js?v=870bee00:66275
+[     777ms] [ERROR] Error decoding audio: sfx_pickup -  Unable to decode audio data @ http://localhost:3000/node_modules/.vite/deps/phaser.js?v=870bee00:67989
+[     777ms] [ERROR] Failed to process file: %s "%s" audio sfx_pickup @ http://localhost:3000/node_modules/.vite/deps/phaser.js?v=870bee00:66275
+[     777ms] [ERROR] Error decoding audio: sfx_death -  Unable to decode audio data @ http://localhost:3000/node_modules/.vite/deps/phaser.js?v=870bee00:67989
+[     777ms] [ERROR] Failed to process file: %s "%s" audio sfx_death @ http://localhost:3000/node_modules/.vite/deps/phaser.js?v=870bee00:66275
+[     780ms] Unable to decode audio data
+[     780ms] Unable to decode audio data
+[     780ms] Unable to decode audio data
+[     780ms] Unable to decode audio data
+[     780ms] Unable to decode audio data
+[     780ms] [ERROR] Failed to process file: %s "%s" image pixel_font @ http://localhost:3000/node_modules/.vite/deps/phaser.js?v=870bee00:66275
+[     780ms] [ERROR] File failed: %s "%s" (via %s "%s") bitmapfont pixel_font image pixel_font @ http://localhost:3000/node_modules/.vite/deps/phaser.js?v=870bee00:67293
+[     780ms] [ERROR] File failed: %s "%s" (via %s "%s") bitmapfont pixel_font image pixel_font @ http://localhost:3000/node_modules/.vite/deps/phaser.js?v=870bee00:67293

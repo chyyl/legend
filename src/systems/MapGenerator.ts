@@ -107,29 +107,36 @@ export class MapGenerator {
   private seed: string
   private random: SeededRandom
   private chunkCache: Map<string, ChunkData> = new Map()
-  private regionMap: Map<string, RegionId> = new Map()
+  private regionGrid: Uint8Array
 
   constructor(seed: string) {
     this.seed = seed
     this.random = new SeededRandom(seed)
+    this.regionGrid = new Uint8Array(MAP_WIDTH * MAP_HEIGHT)
     this.buildRegionMap()
   }
 
   private buildRegionMap() {
-    for (const region of REGIONS) {
-      for (let x = region.x; x < region.x + region.width; x += CHUNK_SIZE) {
-        for (let y = region.y; y < region.y + region.height; y += CHUNK_SIZE) {
-          const key = `${x},${y}`
-          this.regionMap.set(key, region.id)
+    // 0 = 无区域，其余为 REGIONS 索引 + 1（按格子坐标填充，O(1) 查询）
+    REGIONS.forEach((region, index) => {
+      const x0 = Math.max(0, region.x)
+      const y0 = Math.max(0, region.y)
+      const x1 = Math.min(MAP_WIDTH, region.x + region.width)
+      const y1 = Math.min(MAP_HEIGHT, region.y + region.height)
+      for (let y = y0; y < y1; y++) {
+        for (let x = x0; x < x1; x++) {
+          this.regionGrid[y * MAP_WIDTH + x] = index + 1
         }
       }
-    }
+    })
   }
 
   getRegionAt(worldX: number, worldY: number): RegionId | null {
-    const chunkX = Math.floor(worldX / CHUNK_SIZE) * CHUNK_SIZE
-    const chunkY = Math.floor(worldY / CHUNK_SIZE) * CHUNK_SIZE
-    return this.regionMap.get(`${chunkX},${chunkY}`) || null
+    const tileX = Math.floor(worldX / TILE_SIZE)
+    const tileY = Math.floor(worldY / TILE_SIZE)
+    if (tileX < 0 || tileY < 0 || tileX >= MAP_WIDTH || tileY >= MAP_HEIGHT) return null
+    const idx = this.regionGrid[tileY * MAP_WIDTH + tileX]
+    return idx > 0 ? REGIONS[idx - 1].id : null
   }
 
   getBiomeAt(worldX: number, worldY: number): string {
@@ -151,7 +158,7 @@ export class MapGenerator {
     const entities: EntityData[] = []
     const decorations: DecorationData[] = []
 
-    const region = this.getRegionAt(chunkX * TILE_SIZE, chunkY * TILE_SIZE)
+    const region = this.getRegionAt(chunkX * CHUNK_SIZE * TILE_SIZE, chunkY * CHUNK_SIZE * TILE_SIZE)
     const biome = region ? REGIONS.find(r => r.id === region)?.biome || 'plains' : 'plains'
     const biomeTiles = BIOME_TILES[biome] || ['grass', 'dirt']
     const biomeWeights = BIOME_WEIGHTS[biome] || [1]
@@ -225,12 +232,20 @@ export class MapGenerator {
     const regionData = REGIONS.find(r => r.id === region)
     if (!regionData) return
 
-    const relX = (chunkX * CHUNK_SIZE * TILE_SIZE) - regionData.x
-    const relY = (chunkY * CHUNK_SIZE * TILE_SIZE) - regionData.y
-
-    if (region === 'camp' && relX > 100 && relX < 200 && relY > 100 && relY < 200) {
-      entities.push({ type: 'npc', x: regionData.x + 150, y: regionData.y + 150, properties: { npcId: 'elder' } })
-      entities.push({ type: 'teleport', x: regionData.x + 200, y: regionData.y + 200, properties: { regionId: 'camp' } })
+    const chunkWorldX = chunkX * CHUNK_SIZE * TILE_SIZE
+    const chunkWorldY = chunkY * CHUNK_SIZE * TILE_SIZE
+    const centerX = (regionData.x + regionData.width / 2) * TILE_SIZE
+    const centerY = (regionData.y + regionData.height / 2) * TILE_SIZE
+    if (
+      centerX >= chunkWorldX && centerX < chunkWorldX + CHUNK_SIZE * TILE_SIZE &&
+      centerY >= chunkWorldY && centerY < chunkWorldY + CHUNK_SIZE * TILE_SIZE
+    ) {
+      if (region === 'camp') {
+        entities.push({ type: 'npc', x: centerX, y: centerY, properties: { npcId: 'elder' } })
+        entities.push({ type: 'teleport', x: centerX + 80, y: centerY, properties: { regionId: 'camp' } })
+      }
+      // 每个区域中心放一个传送门
+      entities.push({ type: 'teleport', x: centerX, y: centerY + 80, properties: { regionId: regionData.id } })
     }
 
     if (this.random.next() < 0.001) {

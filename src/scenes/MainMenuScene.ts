@@ -164,7 +164,6 @@ export class MainMenuScene extends Scene {
       container.on('pointerdown', () => this.startGame(i))
       container.on('pointerover', () => {
         this.selectedSave = i
-        this.showSaveSelect()
       })
       
       this.menuContainer!.add(container)
