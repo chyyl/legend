@@ -294,11 +294,13 @@ export class World {
   createEntity(id?: string): Entity {
     const entity = new Entity(id)
     this.toAdd.push(entity)
+    this.invalidateQueries()
     return entity
   }
 
   removeEntity(id: string) {
     this.toRemove.push(id)
+    this.invalidateQueries()
   }
 
   addSystem(system: System) {
@@ -308,6 +310,8 @@ export class World {
   }
 
   update(delta: number) {
+    const pendingChanges = this.toAdd.length > 0 || this.toRemove.length > 0
+
     for (const entity of this.toAdd) {
       this.entities.set(entity.id, entity)
     }
@@ -319,6 +323,10 @@ export class World {
       this.entities.delete(id)
     }
     this.toRemove.length = 0
+
+    // Entity set changed => cached query results are stale and must be rebuilt,
+    // otherwise newly added entities are never returned by query().
+    if (pendingChanges) this.invalidateQueries()
 
     for (const system of this.systems) {
       system.update(delta)

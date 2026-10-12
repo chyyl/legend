@@ -1,6 +1,7 @@
-import { World, System, Entity, ComponentType } from '../ecs/ECS'
-import { BONDS, BondId, WEAPON_CONFIG, WEAPON_QUALITY, EQUIPMENT_QUALITY, ENEMY_CONFIG, DIFFICULTY } from '../config/GameConfig'
+import { World, System, Entity, ComponentType, ItemData } from '../ecs/ECS'
+import { BONDS, BondId, WEAPON_CONFIG, WEAPON_QUALITY, EQUIPMENT_QUALITY, ENEMY_CONFIG, DIFFICULTY, PLAYER_MAX_LEVEL, EnemyType } from '../config/GameConfig'
 import { MapGenerator } from './MapGenerator'
+import { saveManager } from './SaveManager'
 
 export class CombatSystem extends System {
   private mapGenerator: MapGenerator
@@ -98,7 +99,14 @@ export class CombatSystem extends System {
       damage = this.applyBondEffects(attacker, target, damage, bonds)
     }
 
-    const actualDamage = Math.max(1, Math.floor(damage - targetHealth.maxHp * 0.01))
+    let actualDamage = Math.max(1, Math.floor(damage - targetHealth.maxHp * 0.01))
+
+    // 难度系数影响敌人对玩家造成的伤害（0.9 -> 0.95x，2 -> 1.5x，0 -> 0.5x）
+    if (attacker.get('enemy') && target.get('player')) {
+      const difficulty = saveManager.getSettings().gameplay.difficulty ?? DIFFICULTY.default
+      actualDamage = Math.max(1, Math.floor(actualDamage * (0.5 + difficulty * 0.5)))
+    }
+
     targetHealth.hp = Math.max(0, targetHealth.hp - actualDamage)
     targetHealth.lastDamageSource = attacker.id
     targetHealth.invulnerable = true
@@ -116,6 +124,10 @@ export class CombatSystem extends System {
 
     if (targetHealth.hp <= 0) {
       this.onKill(attacker, target)
+      // 尸体不再留在世界里挡路/被查询到
+      if (target.get('enemy')) {
+        this.world.removeEntity(target.id)
+      }
     }
   }
 
@@ -167,7 +179,7 @@ export class CombatSystem extends System {
       const enemyConfig = ENEMY_CONFIG[victimEnemy.enemyType]
       const baseExp = victimEnemy.level * 10 * enemyConfig.expMul
       const baseGold = victimEnemy.level * 10 * enemyConfig.goldMul
-      const difficulty = DIFFICULTY.default
+      const difficulty = saveManager.getSettings().gameplay.difficulty ?? DIFFICULTY.default
 
       let exp = baseExp * difficulty * (killerStats?.expMultiplier || 1)
       let gold = baseGold * difficulty * (killerStats?.goldMultiplier || 1)
@@ -184,6 +196,7 @@ export class CombatSystem extends System {
 
   private checkLevelUp(entity: Entity) {
     const level = entity.get('level')!
+    if (level.level >= PLAYER_MAX_LEVEL) return
     const expToNext = Math.floor(100 * Math.pow(1.5, level.level - 1))
     if (level.exp >= expToNext) {
       level.level++
@@ -205,27 +218,60 @@ export class CombatSystem extends System {
       if (Math.random() < drop.chance) {
         const count = Math.floor(Math.random() * (drop.maxCount - drop.minCount + 1)) + drop.minCount
         for (let i = 0; i < count; i++) {
-          this.generateDrop(inventory, drop, victimEnemy.level)
+          this.generateDrop(inventory, victimEnemy.level, victimEnemy.enemyType)
         }
       }
     }
   }
 
-  private generateDrop(inventory: any, drop: any, enemyLevel: number) {
-    // Simplified drop generation
-    const item: any = {
-      id: `drop_${Date.now()}_${Math.random()}`,
+  private generateDrop(inventory: any, enemyLevel: number, enemyType: EnemyType) {
+    const quality = this.rollQuality()
+    const damage = Math.round((5 + enemyLevel * 2) * quality.damageMul)
+
+    const item: ItemData = {
+      id: `drop_${Date.now()}_${Math.floor(Math.random() * 1e6)}`,
       type: 'weapon',
-      name: '铁刃',
-      quality: 'N',
+      name: '铁刃',           // 暂时统一叫铁刃，quality.id 区分
+      quality: quality.id,     // 'N'|'R'|'SR'|'SSR'
       level: enemyLevel,
-      stats: { damage: 10 },
+      stats: { damage, attackSpeed: 1.2, range: 32 },
       bonds: [],
       icon: 'iron_blade',
       stackable: false,
       count: 1
     }
+
+    this.rollBonds(item, quality, enemyType)
     inventory.items.push(item)
+  }
+
+  /** 按 WEAPON_QUALITY.chance 加权 roll 品质（N=0.80, R=0.15, SR=0.035, SSR=0.015） */
+  private rollQuality(): (typeof WEAPON_QUALITY)[number] {
+    let roll = Math.random()
+    for (const quality of WEAPON_QUALITY) {
+      if (roll < quality.chance) return quality
+      roll -= quality.chance
+    }
+    return WEAPON_QUALITY[WEAPON_QUALITY.length - 1]
+  }
+
+  /** 按品质 bondRange 附 0~N 个不重复羁绊；bondChance 成功则额外附 1 个 */
+  private rollBonds(item: ItemData, quality: (typeof WEAPON_QUALITY)[number], enemyType: EnemyType) {
+    const min = quality.bondRange[0]
+    const max = quality.bondRange[1]
+    const bondCount = max > min ? min + Math.floor(Math.random() * (max - min + 1)) : min
+
+    const pool: string[] = BONDS.map(b => b.id)
+    for (let i = 0; i < bondCount && pool.length > 0; i++) {
+      const idx = Math.floor(Math.random() * pool.length)
+      item.bonds.push(pool.splice(idx, 1)[0])
+    }
+
+    // 额外掉落一个羁绊物品（bondRange 为 0 时也保证至少有 1 个羁绊）
+    if (Math.random() < ENEMY_CONFIG[enemyType].bondChance && pool.length > 0) {
+      const idx = Math.floor(Math.random() * pool.length)
+      item.bonds.push(pool[idx])
+    }
   }
 
   private processProjectiles(delta: number) {

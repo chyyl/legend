@@ -1,4 +1,4 @@
-import { World, System, Entity } from '../ecs/ECS'
+import { World, System, Entity, AIComponent, PositionComponent } from '../ecs/ECS'
 import { MapGenerator } from './MapGenerator'
 
 export class AISystem extends System {
@@ -20,8 +20,39 @@ export class AISystem extends System {
 
       if (health.hp <= 0) continue
 
+      // ai.target 从未被赋值 -> 敌人永远 idle 闲逛。这里持续尝试锁定最近的玩家。
+      this.acquireTarget(ai, pos)
+
       ai.decisionTimer -= delta
       this.updateAI(entity, ai, pos, vel, stats, delta)
+    }
+  }
+
+  private acquireTarget(ai: AIComponent, pos: PositionComponent) {
+    // 已有有效目标则沿用
+    const current = ai.target ? this.world.entities.get(ai.target) : null
+    if (current && current.active && current.has('position')) return
+
+    ai.target = null
+
+    const players = this.world.query('player', 'position')
+    let nearest: Entity | null = null
+    let nearestDistSq = Infinity
+    for (const player of players) {
+      if (!player.active) continue
+      const playerPos = player.get('position')!
+      const dx = playerPos.x - pos.x
+      const dy = playerPos.y - pos.y
+      const distSq = dx * dx + dy * dy
+      if (distSq < nearestDistSq) {
+        nearestDistSq = distSq
+        nearest = player
+      }
+    }
+
+    if (nearest && nearestDistSq < ai.aggroRange * ai.aggroRange) {
+      ai.target = nearest.id
+      ai.state = 'chase'
     }
   }
 
