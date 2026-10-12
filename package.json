@@ -1,31 +1,34 @@
 {
-  "name": "project-emancipate",
-  "version": "1.0.0",
-  "description": "Project Emancipate - Zero-dependency isometric ARPG",
+  "name": "legend",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "playwright test",
-    "test:headed": "playwright test --headed",
-    "test:ui": "playwright test --ui",
-    "test:debug": "playwright test --debug",
-    "lint": "node --check js/main.js js/engine/*.js js/gameplay/*.js js/ui/*.js js/editor/*.js"
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "lint": "eslint src --ext ts",
+    "cap:add": "cap add",
+    "cap:sync": "cap sync",
+    "cap:open:android": "cap open android",
+    "cap:build:android": "cap build android",
+    "deploy": "npm run build && gh-pages -d dist"
+  },
+  "dependencies": {
+    "phaser": "^3.80.0",
+    "@capacitor/core": "^6.0.0",
+    "@capacitor/android": "^6.0.0",
+    "colyseus.js": "^0.15.0",
+    "uuid": "^9.0.0"
   },
   "devDependencies": {
-    "@playwright/test": "^1.44.0",
-    "playwright": "^1.44.0"
-  },
-  "engines": {
-    "node": ">=18.0.0"
-  },
-  "keywords": [
-    "arpg",
-    "isometric",
-    "canvas2d",
-    "procedural",
-    "webgl",
-    "offline-first"
-  ],
-  "author": "",
-  "license": "MIT"
+    "@capacitor/cli": "^6.0.0",
+    "@types/uuid": "^9.0.0",
+    "typescript": "^5.4.0",
+    "vite": "^5.2.0",
+    "gh-pages": "^6.0.0",
+    "eslint": "^8.57.0",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0"
+  }
 }
