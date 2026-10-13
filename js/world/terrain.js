@@ -1,191 +1,260 @@
-/* =============================================================================
- * 文件：js/world/terrain.js
- * 职责：程序化地形生成（要求：程序化生成，不同区域略有不同，处理地面/水/山）。
- *       基于种子 value-noise 多倍频高度图，按区域主题挑选地表类型，
- *       山脉用高度阈值生成不可通行的 rock_high（山），低洼处生成 water（水），
- *       跨海大桥区域强制在水面铺设 bridge（桥），保证“水上有路可走”。
- * 依赖：js/core/utils.js（makeRng）、js/data/config.js（区域/可通行表）
- * 对外接口（window.Legend.Terrain）：
- *   - init(seed)                             生成噪声场
- *   - tileAt(tx, ty)                         -> 'water'|'grass'|...（含越界兜底为 water）
- *   - walkable(tx, ty)                       是否可通行（查 Config.WALKABLE + 桥修正）
- *   - themeAt(tx, ty)                        所属区域主题（用于刷怪/取色）
- *   - randomWalkable(rng, tx, ty, tries)     附近找一个可走的格子（刷怪/宝箱用）
- * 被引用：worldmap.js / renderer.js / game.js
- * =============================================================================
- */
-(function (global) {
+/* ============================================================================
+   js/world/terrain.js —— 世界地形生成与查询（Q9 手工框架+局部随机）
+   ----------------------------------------------------------------------------
+   职责：生成 2000×2000 岛屿世界，含 10 个区域（手工坐标框架）、水域、
+         高差与可跳跃地形、黑暗迷宫（程序生成+战争迷雾）。提供通行查询。
+
+   对外接口（window.LG.Terrain）：
+     .generate(seed) -> 生成全图（内部缓存）
+     .tileAt(x,y) -> {type, walk, jump, water, height}
+     .walkable(x,y) -> bool          玩家/敌人可走
+     .jumpable(x,y) -> bool          需跳跃翻越的矮障碍（Q21伪跳跃）
+     .isWater(x,y) -> bool
+     .regionOf(x,y) -> regionObj
+     .fog.reveal(x,y) .fog.visible(x,y)   迷宫战争迷雾
+     .SIZE
+
+   设计守则：采用"区域框架 + 值噪声局部随机"。全局以 TypedArray 存储瓦片类型
+             以控制内存（2000×2000≈4MB Uint8），水域/高差分层存储。
+   依赖：core/config.js（区域坐标）、core/utils.js（种子随机）。
+   ========================================================================== */
+(function () {
   'use strict';
-  var L = global.Legend = global.Legend || {};
-  var Config = L.Config, Utils = L.Utils;
+  const LG = (window.LG = window.LG || {});
+  const W = 2000;
 
-  var TILE = Config.TILE, SIZE = Config.MAP_SIZE;
-  var SEED = 20261013;
-  var perm = new Uint8Array(512);
-  var tileCache = new Map();   // "x,y" -> tile，缓存已访问格子，避免重复计算
+  // 瓦片类型枚举
+  const T_GRASS = 0, T_DIRT = 1, T_SAND = 2, T_SNOW = 3, T_ROCK = 4,
+        T_WATER = 5, T_ROAD = 6, T_WALL = 7, T_CASTLE = 8, T_VOID = 9,
+        T_FENCE = 10; // FENCE = 可跳跃矮障碍
 
-  /* ---- 值噪声 ---- */
-  function hash2(x, y) {
-    var h = x * 374761393 + y * 668265263 + SEED * 1442695041;
-    h = (h ^ (h >> 13)) * 1274126177;
-    return ((h ^ (h >> 16)) >>> 0) / 4294967295;
-  }
-  function smooth(t) { return t * t * (3 - 2 * t); }
-  function valueNoise(x, y) {
-    var xi = Math.floor(x), yi = Math.floor(y);
-    var xf = smooth(x - xi), yf = smooth(y - yi);
-    var a = hash2(xi, yi), b = hash2(xi + 1, yi), c = hash2(xi, yi + 1), d = hash2(xi + 1, yi + 1);
-    return a + (b - a) * xf + (c - a) * yf + (a - b - c + d) * xf * yf;
-  }
-  function fbm(x, y, oct) {   // 分形叠加噪声 -> [0,1]
-    var v = 0, amp = 0.5, f = 1, norm = 0;
-    for (var i = 0; i < oct; i++) {
-      v += valueNoise(x * f, y * f) * amp;
-      norm += amp; amp *= 0.5; f *= 2;
-    }
-    return v / norm;
-  }
+  let tiles = null, height = null, regionMap = null;
+  let fog = null; // 迷宫迷雾：Uint8 0=未探索 1=可见
+  let mazeIdx = -1; // 黑暗迷宫区域下标（渲染时 O(1) 判定，避免每瓦片扫描11个区域）
+  let ready = false; // 地形是否已生成（引擎在生成前跳过世界逻辑）
 
-  /* ---- 区域半径衰减：离区域中心越近，主题越强 ---- */
-  function regionWeight(rg, tx, ty) {
-    var d = Utils.dist(tx, ty, rg.cx, rg.cy);
-    if (d >= rg.r) return 0;
-    return 1 - d / rg.r;
+  /* 值噪声：用种子随机网格做平滑插值，得到连续地形起伏 */
+  function makeNoise(seed, grid) {
+    const r = LG.U.rng(seed);
+    const g = new Float32Array(grid * grid);
+    for (let i = 0; i < g.length; i++) g[i] = r();
+    return function (x, y) {
+      const gx = (x / W) * grid, gy = (y / W) * grid;
+      const x0 = Math.floor(gx) % grid, y0 = Math.floor(gy) % grid;
+      const x1 = (x0 + 1) % grid, y1 = (y0 + 1) % grid;
+      const fx = gx - Math.floor(gx), fy = gy - Math.floor(gy);
+      const sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
+      const a = g[y0 * grid + x0], b = g[y0 * grid + x1];
+      const c = g[y1 * grid + x0], d = g[y1 * grid + x1];
+      return LG.U.lerp(LG.U.lerp(a, b, sx), LG.U.lerp(c, d, sx), sy);
+    };
   }
 
-  /* 计算单个格子的地形类型（带缓存） */
-  function computeTile(tx, ty) {
-    if (tx < 0 || ty < 0 || tx >= SIZE || ty >= SIZE) return 'water'; // 大陆之外是海
-    var s = 1 / 48;                             // 噪声采样尺度
-    var h = fbm(tx * s, ty * s, 4);             // 高度
-    var m = fbm(tx * s + 100, ty * s + 100, 3); // 湿度
+  /* ---------- 全图生成 ---------- */
+  function generate(seed) {
+    seed = seed || LG.Config.SEED;
+    tiles = new Uint8Array(W * W);
+    height = new Uint8Array(W * W);
+    regionMap = new Uint8Array(W * W);
+    fog = new Uint8Array(W * W);
 
-    var rg = Config.getRegionAt(tx, ty);
-    var w = regionWeight(rg, tx, ty);
+    const nElev = makeNoise(seed, 64);      // 地势起伏
+    const nMoist = makeNoise(seed + 7, 48); // 干湿（区分草地/沙漠/雪地）
+    const rnd = LG.U.rng(seed + 99);
 
-    var tile;
-    /* 1) 基础气候带（距离大陆中心远近决定海陆） */
-    var dc = Utils.dist(tx, ty, SIZE / 2, SIZE / 2) / (SIZE / 2); // 0 中心 ~ 1 边缘
-    if (dc > 0.965) tile = 'water';                     // 大陆边缘环海
-    else if (h < 0.30 + dc * 0.06) tile = 'water';      // 低洼湖泊
-    else if (h < 0.34 + dc * 0.06) tile = 'sand';       // 湖岸/海岸沙滩
-    else if (h > 0.74) tile = 'rock_high';              // 高海拔山体（不可通行）
-    else if (h > 0.66) tile = 'rock';                   // 山脚岩石
-    else if (m > 0.62) tile = 'grass';
-    else tile = 'dirt';
+    // 岛屿掩码：中心为陆地，边缘为海（半径约 950 的圆 + 噪声扰动）
+    const cx = W / 2, cy = W / 2;
+    for (let y = 0; y < W; y++) {
+      for (let x = 0; x < W; x++) {
+        const i = y * W + x;
+        const dx = x - cx, dy = y - cy;
+        const d = Math.hypot(dx, dy) / 950;
+        const island = d + (nElev(x, y) - 0.5) * 0.25; // 噪声扰动海岸线
 
-    /* 2) 区域主题覆盖：权重越高越偏向该区域的首选地表 */
-    if (w > 0) {
-      var th = rg.theme;
-      var primary = th[0];
-      if (rg.id === 'bridge') {
-        /* 跨海大桥：水面铺一条桥，其余保持水/沙 */
-        var laneY = rg.cy;
-        if (Math.abs(ty - laneY) < 3 && tile === 'water') tile = 'bridge';
-        else if (w > 0.5 && tile === 'water') tile = 'water';
-        else if (w > 0.5 && tile === 'rock_high') tile = 'sand';
-      } else if (rg.id === 'island') {
-        /* 骷髅岛：中心隆起的骨地小岛 */
-        if (w > 0.35) tile = (h > 0.62) ? 'rock' : 'bone';
-        else if (tile === 'dirt') tile = 'sand';
-      } else if (rg.id === 'final') {
-        /* 终末之战：熔岩裂隙 */
-        if (w > 0.3 && tile !== 'water') tile = (m > 0.58) ? 'lava' : 'darkstone';
-      } else {
-        /* 通用：按权重把主题列表里的类型“染”上去 */
-        var idx = Math.min(th.length - 1, Math.floor((1 - w) * th.length));
-        var want = th[idx];
-        if (want === 'rock') {           // 山区主题：保留高低差的立体感
-          if (tile === 'rock_high' && w < 0.6) tile = 'rock';
-          else if (tile !== 'water' && tile !== 'rock_high' && w > 0.4) tile = 'rock';
-        } else if (want === 'flower') {
-          if (tile === 'grass' && m > 0.5) tile = 'flower';
-        } else if (want === 'wall') {
-          if (tile === 'grass' || tile === 'dirt') tile = 'rock';
-        } else if (want !== 'water' && want !== 'rock_high') {
-          /* 其余主题不允许覆盖水/山，避免出现“雪地里的湖”之类的怪异边界 */
-          if (tile !== 'water' && tile !== 'rock_high' && tile !== 'sand') tile = want;
+        if (island > 1.0) { tiles[i] = T_WATER; continue; } // 海
+
+        // 区域归属：距离最近区域中心 < 区域半径
+        let best = -1, bd = 1e9;
+        LG.Config.REGIONS.forEach((rg, ri) => {
+          const rd = Math.hypot(x - rg.cx, y - rg.cy);
+          if (rd < bd) { bd = rd; best = ri; }
+        });
+        regionMap[i] = best;
+        const rg = LG.Config.REGIONS[best];
+
+        // 地势高度：0=平地 1=可跳跃矮障 2=不可翻越高山
+        const e = nElev(x, y);
+        let h = 0;
+        if (island > 0.86) h = 0;                 // 近海岸沙地
+        else if (e > 0.72) h = 2;                 // 高山
+        else if (e > 0.66) h = 1;                 // 矮墙/栅栏（可跳）
+
+        // 区域基底类型
+        let type;
+        switch (rg.biome) {
+          case 'coast': type = island > 0.86 ? T_SAND : T_GRASS; break;
+          case 'snow': type = T_SNOW; break;
+          case 'rock': type = T_ROCK; break;
+          case 'farm': type = T_DIRT; break;
+          case 'castle': type = T_CASTLE; break;
+          case 'void': type = T_VOID; break;
+          case 'maze': type = T_ROCK; break;
+          default: type = nMoist(x, y) > 0.6 ? T_DIRT : T_GRASS;
         }
+        // 近海岸强制沙地
+        if (island > 0.86 && type !== T_WATER) type = T_SAND;
+
+        tiles[i] = type;
+        height[i] = h;
       }
     }
 
-    /* 3) 人工修正：区域核心圈一律平整为可行走地表（营地/城镇需要可建筑、可站立）。
-     *    注意必须覆盖 water/lava/rock_high —— 否则区域中心可能整片成湖或山，
-     *    导致 NPC/传送点/玩家出生点卡死。跨海大桥区域除外（它本就是水+桥）。 */
-    if (w > 0.75 && rg.id !== 'bridge') {
-      tile = (rg.id === 'farm') ? 'farmland'
-           : (rg.id === 'snow') ? 'snow'
-           : (rg.theme[0] === 'darkstone') ? 'darkstone'
-           : (rg.id === 'bay' || rg.id === 'island') ? 'sand'
-           : 'grass';
-    }
+    // 区域间铺路（ROAD 连通），保证可达性
+    buildRoads();
 
-    /* 4) 营地与各区域之间铺土路，跨水自动变桥（保证全图连通） */
-    if (tile === 'water' || tile === 'rock_high') {
-      if (nearRoad(tx, ty)) tile = (tile === 'water') ? 'bridge' : 'rock';
-    }
+    // 黑暗迷宫区域：程序生成迷宫墙 + 挖空重铺
+    buildMaze(seed);
 
-    return tile;
+    // 部分草地撒栅栏（可跳跃矮障碍），丰富跳跃玩法
+    sprinkleFences(rnd);
+    // 记录迷宫区域下标并标记就绪（渲染 O(1) 判定 + 引擎防崩守卫）
+    mazeIdx = LG.Config.REGIONS.findIndex((r) => r.biome === 'maze');
+    ready = true;
+    return true;
   }
 
-  /* ---- 道路网络：营地 -> 各区域中心的折线 ---- */
-  var roads = [];
+  /* 用 BFS 从营地向各区域中心铺一条路，确保全程可达 */
   function buildRoads() {
-    roads = [];
-    var camp = Config.REGIONS[0];
-    for (var i = 1; i < Config.REGIONS.length; i++) {
-      var rg = Config.REGIONS[i];
-      if (rg.id === 'wild') continue;
-      roads.push([camp.cx, camp.cy, rg.cx, rg.cy]);
-    }
-  }
-  function nearRoad(tx, ty) {
-    for (var i = 0; i < roads.length; i++) {
-      var r = roads[i];
-      if (segDist(tx, ty, r[0], r[1], r[2], r[3]) <= 1.6) return true;
-    }
-    return false;
-  }
-  function segDist(px, py, x1, y1, x2, y2) {
-    var dx = x2 - x1, dy = y2 - y1;
-    var t = Utils.clamp(((px - x1) * dx + (py - y1) * dy) / (dx * dx + dy * dy), 0, 1);
-    return Utils.dist(px, py, x1 + dx * t, y1 + dy * t);
+    const camp = LG.Config.REGIONS.find((r) => r.id === 'camp');
+    LG.Config.REGIONS.forEach((rg) => {
+      if (rg === camp) return;
+      let x = camp.cx, y = camp.cy;
+      const tx = rg.cx, ty = rg.cy;
+      const steps = Math.ceil(Math.hypot(tx - x, ty - y));
+      for (let s = 0; s < steps; s++) {
+        const nx = Math.round(LG.U.lerp(x, tx, s / steps));
+        const ny = Math.round(LG.U.lerp(y, ty, s / steps));
+        // 铺 3 宽的道路并清空高度，保证可通行
+        for (let oy = -1; oy <= 1; oy++)
+          for (let ox = -1; ox <= 1; ox++) {
+            const px = nx + ox, py = ny + oy;
+            if (px < 0 || py < 0 || px >= W || py >= W) continue;
+            const i = py * W + px;
+            if (tiles[i] !== T_WATER) { tiles[i] = T_ROAD; height[i] = 0; }
+          }
+      }
+    });
   }
 
-  var Terrain = {
-    init: function (seed) {
-      SEED = seed | 0;
-      tileCache.clear();
-      buildRoads();
-    },
-    tileAt: function (tx, ty) {
-      var k = tx + ',' + ty;
-      var v = tileCache.get(k);
-      if (v === undefined) {
-        v = computeTile(tx, ty);
-        if (tileCache.size > 60000) tileCache.clear();  // 防内存膨胀
-        tileCache.set(k, v);
+  /* 黑暗迷宫：在 maze 区域用递归回溯生成迷宫，墙=T_WALL，通路=T_ROAD */
+  function buildMaze(seed) {
+    const rg = LG.Config.REGIONS.find((r) => r.id === 'maze');
+    if (!rg) return;
+    const CELL = 10; // 迷宫单元格大小
+    const R = 120;   // 迷宫半径
+    const r = LG.U.rng(seed + 555);
+    // 先把区域清为墙
+    for (let y = rg.cy - R; y < rg.cy + R; y++)
+      for (let x = rg.cx - R; x < rg.cx + R; x++) {
+        const i = y * W + x;
+        if (tiles[i] !== T_WATER) { tiles[i] = T_WALL; height[i] = 0; }
       }
-      return v;
-    },
-    walkable: function (tx, ty) {
-      var t = Terrain.tileAt(tx, ty);
-      var ok = Config.WALKABLE[t];
-      if (ok === undefined) ok = true;
-      /* 水域只有 bridge 可走；山体 rock_high 不可走 */
-      return !!ok;
-    },
-    themeAt: function (tx, ty) { return Config.getRegionAt(tx, ty); },
-    randomWalkable: function (rng, tx, ty, tries) {
-      tries = tries || 20;
-      rng = Utils.asRng(rng);          // 兼容直接传 Math.random
-      for (var i = 0; i < tries; i++) {
-        var x = tx + rng.int(-6, 6), y = ty + rng.int(-6, 6);
-        if (Terrain.walkable(x, y)) return { x: x, y: y };
-      }
-      return { x: tx, y: ty };
+    // 回溯法挖通路
+    const cols = Math.floor((2 * R) / CELL), rows = cols;
+    const visited = new Uint8Array(cols * rows);
+    const stack = [[0, 0]];
+    visited[0] = 1;
+    carveAt(0, 0);
+    function carveAt(gx, gy) {
+      const x = rg.cx - R + gx * CELL + 1, y = rg.cy - R + gy * CELL + 1;
+      for (let oy = 0; oy < CELL - 1; oy++)
+        for (let ox = 0; ox < CELL - 1; ox++) {
+          const i = (y + oy) * W + (x + ox);
+          tiles[i] = T_ROAD;
+        }
     }
+    while (stack.length) {
+      const [gx, gy] = stack[stack.length - 1];
+      const nb = [];
+      [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([dx, dy]) => {
+        const nx = gx + dx, ny = gy + dy;
+        if (nx >= 0 && ny >= 0 && nx < cols && ny < rows && !visited[ny * cols + nx]) nb.push([nx, ny, dx, dy]);
+      });
+      if (nb.length) {
+        const [nx, ny, dx, dy] = nb[(r() * nb.length) | 0];
+        visited[ny * cols + nx] = 1;
+        // 打通当前格与目标格之间的墙
+        const wx = rg.cx - R + gx * CELL + 1 + (dx > 0 ? CELL - 2 : 0);
+        const wy = rg.cy - R + gy * CELL + 1 + (dy > 0 ? CELL - 2 : 0);
+        for (let k = 0; k < 2; k++) {
+          const i = (wy + (dy ? k : 0)) * W + (wx + (dx ? k : 0));
+          tiles[i] = T_ROAD;
+        }
+        carveAt(nx, ny);
+        stack.push([nx, ny]);
+      } else stack.pop();
+    }
+    // 入口/出口打通
+    carveAt(0, 0);
+    carveAt(cols - 1, rows - 1);
+  }
+
+  /* 草地撒栅栏（可跳跃矮障碍） */
+  function sprinkleFences(rnd) {
+    for (let k = 0; k < 40000; k++) {
+      const x = (rnd() * W) | 0, y = (rnd() * W) | 0;
+      const i = y * W + x;
+      if (tiles[i] === T_GRASS && height[i] === 0 && rnd() < 0.3) height[i] = 1;
+    }
+  }
+
+  /* ---------- 查询接口 ---------- */
+  function inb(x, y) { return x >= 0 && y >= 0 && x < W && y < W; }
+  /* O(1) 迷宫判定（渲染热路径专用，避免 regionOf 扫描） */
+  function isMazeAt(x, y) {
+    if (!ready || mazeIdx < 0) return false;
+    x = x | 0; y = y | 0;
+    return inb(x, y) && regionMap[y * W + x] === mazeIdx;
+  }
+  function tileAt(x, y) {
+    x = x | 0; y = y | 0;
+    if (!inb(x, y)) return { type: T_WATER, walk: false, jump: false, water: true, height: 2 };
+    const i = y * W + x, t = tiles[i], h = height[i];
+    const water = t === T_WATER;
+    const wall = t === T_WALL;
+    return { type: t, height: h, water, walk: !water && !wall && h !== 2, jump: h === 1, wall };
+  }
+  function walkable(x, y) { return tileAt(x, y).walk; }
+  function jumpable(x, y) { return tileAt(x, y).jump; }
+  function isWater(x, y) { const t = tileAt(x, y); return t.water; }
+  function regionOf(x, y) {
+    if (!ready || !inb(x, y)) return null; // 未生成时安全返回 null（防崩）
+    return LG.Config.REGIONS[regionMap[(y | 0) * W + (x | 0)]] || null;
+  }
+
+  /* 迷雾：仅 maze 区域启用 */
+  function reveal(x, y) {
+    const rg = regionOf(x, y);
+    if (!rg || rg.biome !== 'maze') return;
+    const rad = 6;
+    for (let oy = -rad; oy <= rad; oy++)
+      for (let ox = -rad; ox <= rad; ox++) {
+        const px = (x | 0) + ox, py = (y | 0) + oy;
+        if (inb(px, py) && ox * ox + oy * oy <= rad * rad) fog[py * W + px] = 1;
+      }
+  }
+  function fogVisible(x, y) {
+    if (!ready || !inb(x, y)) return false;
+    return !!fog[(y | 0) * W + (x | 0)];
+  }
+
+  LG.Terrain = {
+    SIZE: W, generate, tileAt, walkable, jumpable, isWater, regionOf, isMazeAt,
+    get ready() { return ready; },
+    fog: { reveal, visible: fogVisible },
+    TYPE: { GRASS: T_GRASS, DIRT: T_DIRT, SAND: T_SAND, SNOW: T_SNOW, ROCK: T_ROCK,
+            WATER: T_WATER, ROAD: T_ROAD, WALL: T_WALL, CASTLE: T_CASTLE, VOID: T_VOID, FENCE: T_FENCE },
+    // 供 save.js 读取种子+增量策略（Q59）
+    raw: () => ({ tiles, height }),
   };
-
-  L.Terrain = Terrain;
-})(window);
+})();

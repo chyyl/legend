@@ -1,98 +1,79 @@
-/* =============================================================================
- * 文件：js/core/utils.js
- * 职责：与游戏逻辑无关的基础工具：种子随机数、数学函数、事件总线、本地存储、
- *       像素风配色。任何文件都可以使用它，它不依赖任何游戏模块。
- * 依赖：无（最底层工具文件）
- * 对外接口（window.Legend.Utils）：
- *   - makeRng(seed)            生成种子随机函数 rng() -> [0,1)，含 rng.range/a/pick
- *   - clamp / lerp / dist2 / dist / angleLerp
- *   - EventBus                 on/off/emit 轻量事件总线
- *   - store.save(key,obj) / store.load(key,dflt)  localStorage 封装（失败静默）
- *   - hexA(hex, a)             十六进制颜色加透明度
- * 被引用：terrain.js / worldmap.js / loot.js / enemy.js / save.js / game.js 等
- * =============================================================================
- */
-(function (global) {
+/* ============================================================================
+   js/core/utils.js —— 通用工具库（种子随机/数学/存储/事件总线）
+   ----------------------------------------------------------------------------
+   职责：提供无副作用的纯工具函数，供所有模块调用。
+
+   对外接口（window.LG.U）：
+     .rng(seed) -> fn  种子随机数生成器（0~1）
+     .randInt(a,b) .pick(arr) .clamp .lerp .dist2 .dist
+     .fmt(n) .pct(n)
+     .LS.get/.set/.del  localStorage 安全封装（APK离线可用）
+     .bus.on/.emit       极简事件总线（模块间解耦通信）
+
+   设计守则：任何模块不得直接访问 localStorage，一律经 .LS 以便统一迁移。
+   依赖：core/config.js（仅类型引用，无强依赖）。
+   ========================================================================== */
+(function () {
   'use strict';
-  var L = global.Legend = global.Legend || {};
-  var Utils = {};
+  const LG = (window.LG = window.LG || {});
 
-  /* 种子随机数（xorshift32），保证同一 seed 生成同一片大陆 */
-  Utils.makeRng = function (seed) {
-    var s = (seed | 0) || 0x9e3779b9;
-    function next() {
-      s ^= s << 13; s |= 0; s ^= s >>> 17; s ^= s << 5; s |= 0;
-      return ((s >>> 0) % 16777216) / 16777216;
-    }
-    next.range = function (a, b) { return a + next() * (b - a); };
-    next.int = function (a, b) { return Math.floor(next.range(a, b + 1)); };
-    next.pick = function (arr) { return arr[Math.floor(next() * arr.length) % arr.length]; };
-    next.chance = function (p) { return next() < p; };
-    return next;
+  /* mulberry32：轻量可复现种子随机，保证同一种子生成同一世界（Q59 存档策略基础） */
+  function rng(seed) {
+    let a = seed >>> 0;
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  const U = {
+    rng,
+    // [a,b] 闭区间整数随机
+    randInt: (a, b) => Math.floor(Math.random() * (b - a + 1)) + a,
+    pick: (arr) => arr[Math.floor(Math.random() * arr.length)],
+    // 区间随机：null 原样返回，[a,b] 返回 a~b 随机（Q27 固定值+区间随机）
+    range: (r) => (r == null ? null : r[0] + Math.random() * (r[1] - r[0])),
+    clamp: (v, a, b) => (v < a ? a : v > b ? b : v),
+    lerp: (a, b, t) => a + (b - a) * t,
+    dist2: (x1, y1, x2, y2) => (x1 - x2) ** 2 + (y1 - y2) ** 2,
+    dist: (x1, y1, x2, y2) => Math.hypot(x1 - x2, y1 - y2),
+    fmt: (n) => (n >= 10000 ? (n / 1000).toFixed(1) + 'k' : String(Math.round(n))),
+    pct: (n) => (n * 100).toFixed(0) + '%',
+
+    /* localStorage 封装：JSON 序列化 + 容错（隐私模式/存储满时降级到内存） */
+    LS: (() => {
+      const mem = {};
+      let ok = true;
+      try { localStorage.setItem('__t', '1'); localStorage.removeItem('__t'); }
+      catch (e) { ok = false; } // 无 localStorage（如某些 WebView）则用内存
+      return {
+        get(k, def) {
+          try {
+            const s = ok ? localStorage.getItem(k) : mem[k];
+            return s == null ? def : JSON.parse(s);
+          } catch (e) { return def; }
+        },
+        set(k, v) {
+          const s = JSON.stringify(v);
+          if (ok) { try { localStorage.setItem(k, s); } catch (e) { ok = false; mem[k] = s; } }
+          else mem[k] = s;
+        },
+        del(k) { if (ok) localStorage.removeItem(k); else delete mem[k]; },
+      };
+    })(),
+
+    /* 事件总线：模块间通信的唯一推荐通道，避免直接相互引用 */
+    bus: (() => {
+      const map = {};
+      return {
+        on(evt, fn) { (map[evt] = map[evt] || []).push(fn); return () => U.bus.off(evt, fn); },
+        off(evt, fn) { const a = map[evt]; if (a) { const i = a.indexOf(fn); if (i >= 0) a.splice(i, 1); } },
+        emit(evt, data) { (map[evt] || []).slice().forEach((fn) => { try { fn(data); } catch (e) { console.error('[bus]', evt, e); } }); },
+      };
+    })(),
   };
 
-  /* 随机源兼容包装：允许调用方直接传 Math.random（裸函数），
-   * 自动补齐 range/int/pick/chance，避免 "rng.int is not a function" 这类崩溃。
-   * 放在最底层，terrain/loot 等模块共用同一实现。 */
-  Utils.asRng = function (rng) {
-    if (rng && typeof rng.range === 'function' && typeof rng.int === 'function') return rng;
-    var fn = (typeof rng === 'function') ? rng : Math.random;
-    fn.range = fn.range || function (a, b) { return a + fn() * (b - a); };
-    fn.int = fn.int || function (a, b) { return Math.floor(a + fn() * (b - a + 1)); };
-    fn.pick = fn.pick || function (arr) { return arr[Math.floor(fn() * arr.length) % arr.length]; };
-    fn.chance = fn.chance || function (p) { return fn() < p; };
-    return fn;
-  };
-
-  /* 数学工具 */
-  Utils.clamp = function (v, a, b) { return v < a ? a : (v > b ? b : v); };
-  Utils.lerp = function (a, b, t) { return a + (b - a) * t; };
-  Utils.dist2 = function (ax, ay, bx, by) { var dx = ax - bx, dy = ay - by; return dx * dx + dy * dy; };
-  Utils.dist = function (ax, ay, bx, by) { return Math.sqrt(Utils.dist2(ax, ay, bx, by)); };
-  Utils.angleLerp = function (a, b, t) {
-    var d = b - a;
-    while (d > Math.PI) d -= Math.PI * 2;
-    while (d < -Math.PI) d += Math.PI * 2;
-    return a + d * t;
-  };
-  Utils.now = function () { return (global.performance && performance.now) ? performance.now() : Date.now(); };
-
-  /* 事件总线：解耦模块通信（如 ui 监听 'kill' 'levelup' 'loot'） */
-  var bus = { _m: {} };
-  bus.on = function (ev, fn) { (bus._m[ev] = bus._m[ev] || []).push(fn); return fn; };
-  bus.off = function (ev, fn) {
-    var a = bus._m[ev]; if (!a) return;
-    var i = a.indexOf(fn); if (i >= 0) a.splice(i, 1);
-  };
-  bus.emit = function (ev, data) {
-    var a = bus._m[ev]; if (!a) return;
-    for (var i = 0; i < a.length; i++) a[i](data);
-  };
-  Utils.bus = bus;
-
-  /* localStorage 封装：隐私模式/文件协议下可能抛错，静默兜底到内存 */
-  var mem = {};
-  Utils.store = {
-    save: function (key, obj) {
-      var s = JSON.stringify(obj);
-      try { localStorage.setItem(key, s); } catch (e) { mem[key] = s; }
-    },
-    load: function (key, dflt) {
-      var s = null;
-      try { s = localStorage.getItem(key); } catch (e) { s = mem[key] || null; }
-      if (s == null) return dflt;
-      try { return JSON.parse(s); } catch (e) { return dflt; }
-    },
-    del: function (key) {
-      try { localStorage.removeItem(key); } catch (e) { delete mem[key]; }
-    }
-  };
-
-  /* 颜色工具：#rrggbb + 透明度 -> rgba() */
-  Utils.hexA = function (hex, a) {
-    var n = parseInt(hex.slice(1), 16);
-    return 'rgba(' + (n >> 16) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
-  };
-
-  L.Utils = Utils;
-})(window);
+  LG.U = U;
+})();

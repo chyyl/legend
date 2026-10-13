@@ -1,0 +1,32 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e36]:
+    - generic [ref=e37] [cursor=pointer]: ✕
+    - heading "创建角色" [level=2] [ref=e38]
+    - generic [ref=e39]:
+      - generic [ref=e42]:
+        - generic [ref=e43]: 姓名
+        - textbox [ref=e44]: 冒险者
+      - generic [ref=e45]:
+        - generic [ref=e46]: 性别
+        - button "男" [ref=e47] [cursor=pointer]
+        - button "女" [ref=e48] [cursor=pointer]
+      - generic [ref=e49]:
+        - generic [ref=e50]: 发色
+        - textbox [ref=e51]: "#3a2a1a"
+      - generic [ref=e52]:
+        - generic [ref=e53]: 肤色
+        - textbox [ref=e54]: "#e0b090"
+      - generic [ref=e55]:
+        - generic [ref=e56]: 初始武器
+        - combobox [ref=e57]:
+          - option "铁刃" [selected]
+          - option "骑士剑"
+          - option "镰刀"
+          - option "弓"
+          - option "弩"
+          - option "法杖"
+      - button "确认" [ref=e59] [cursor=pointer]
+  - generic:
+    - generic:
+      - generic: LEGEND
+      - generic: 正在载入传奇世界…

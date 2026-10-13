@@ -1,249 +1,77 @@
 <!DOCTYPE html>
-<!-- =============================================================================
-     文件：index.html
-     职责：游戏唯一入口页面。按依赖顺序加载全部脚本（无构建步骤，
-           直接可部署 GitHub Pages / 打包 APK）。DOM 里放置所有 UI 面板模板。
-     依赖关系（加载顺序即依赖顺序）：
-       data/config -> core/utils -> core/input -> world/terrain -> world/worldmap
-       -> systems/loot -> systems/combat -> systems/quest -> systems/save
-       -> entity/player -> entity/enemy -> entity/npc -> entity/projectile
-       -> net/multiplayer -> world/fx -> world/renderer -> ui/ui -> game
-     对外接口：无（它是壳）
-     被引用：浏览器直接打开；README.md 的部署说明以它为准
-     ============================================================================= -->
+<!--
+  ============================================================================
+  index.html —— LEGEND 游戏总入口
+  ----------------------------------------------------------------------------
+  本文件职责：
+    1) 作为纯 HTML5 + Canvas 单页应用的宿主页（可被 Capacitor 打包为 APK/iOS/EXE）
+    2) 按依赖顺序加载所有 JS 模块（无框架、无 ES-module，确保 file:// 离线可运行）
+    3) 提供 Canvas 舞台与加载遮罩
+
+  依赖顺序（下述脚本彼此通过 window.LG 命名空间通信，互不直接引用内部实现）：
+    core/config  -> core/utils -> core/assets -> core/input -> core/audio
+    -> world/terrain -> world/pathfinding -> world/camera
+    -> data/i18n -> game/loot -> game/inventory -> game/player -> game/enemy
+    -> game/combat -> game/quest -> game/npc -> game/save -> game/ui
+    -> net/net -> net/lobby -> core/engine -> main
+
+  接口文档：docs/api.md
+  修改守则：新增功能请新建文件并在本注释区登记，勿改动其他文件内部实现。
+  ============================================================================
+-->
 <html lang="zh-CN">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<meta name="theme-color" content="#0d1420">
-<title>LEGEND - 像素大陆冒险</title>
-<link rel="manifest" href="manifest.json">
-<link rel="icon" href="assets/icon/icon-192.png">
-<link rel="stylesheet" href="css/style.css">
+  <meta charset="UTF-8" />
+  <!-- 移动端适配：禁止缩放页面（游戏内缩放由 Canvas 自行处理），适配 iPhone12 刘海 -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <title>LEGEND 传奇</title>
+  <!-- 内联空图标，避免 favicon.ico 404 请求 -->
+  <link rel="icon" href="data:," />
+  <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
-<div id="app">
+  <!-- 游戏主画布：所有像素画面均绘制于此 -->
+  <canvas id="game"></canvas>
 
-  <!-- 游戏画布 -->
-  <canvas id="game-canvas"></canvas>
+  <!-- HTML 覆盖层：菜单/对话框/输入框等用 DOM 实现，便于聚焦与无障碍点击 -->
+  <div id="overlay"></div>
 
-  <!-- ========== 开始界面（含联机大厅入口） ========== -->
-  <div id="start-screen" class="overlay">
-    <div class="start-box">
-      <h1 class="logo">LEGEND</h1>
-      <p class="subtitle">像素大陆 · 火柴人冒险 · 类我的世界地下城2</p>
-      <div class="form-row">
-        <label>角色名</label>
-        <input id="input-name" type="text" maxlength="8" value="勇者" placeholder="输入角色名">
-      </div>
-      <div class="btn-col">
-        <button id="btn-new" class="btn primary">新的冒险</button>
-        <button id="btn-continue" class="btn">继续游戏</button>
-        <button id="btn-open-lobby" class="btn">联机大厅（1-4人，可单人）</button>
-      </div>
-      <div class="help">
-        <b>操作</b>：WASD 移动 · 鼠标瞄准左键攻击 · 空格翻滚 · E 交互 · Q 药水<br>
-        I 背包 · M 大地图（可传送）· Esc 关闭面板<br>
-        <b>触屏</b>：左侧摇杆移动 · 右半屏点按攻击 · 右下角 交互/翻滚/药水 · 左下角菜单
-      </div>
+  <!-- 加载遮罩：资源与字体就绪前显示 -->
+  <div id="boot">
+    <div class="boot-inner">
+      <div class="boot-title">LEGEND</div>
+      <div class="boot-sub">正在载入传奇世界…</div>
+      <div class="boot-bar"><div id="boot-fill"></div></div>
     </div>
   </div>
 
-  <!-- ========== HUD ========== -->
-  <div id="hud" style="display:none">
-    <div class="hud-top">
-      <div class="hud-left">
-        <div class="hud-name"><span id="hud-lv">Lv1</span> <span id="hud-weapon" class="hud-weapon">空手</span></div>
-        <div class="bar hp"><div id="hud-hp-fill" class="fill"></div><span id="hud-hp-text" class="bar-text">100/100</span></div>
-        <div class="bar exp"><div id="hud-exp-fill" class="fill"></div><span id="hud-exp-text" class="bar-text">0/60</span></div>
-        <div class="hud-stats">
-          <span>💰 <b id="hud-silver">0</b></span>
-          <span id="hud-potion">🧪×3</span>
-          <span>⚔ <b id="hud-dmg">0</b></span>
-          <span>🛡 <b id="hud-def">0</b></span>
-        </div>
-      </div>
-      <div class="hud-right">
-        <canvas id="hud-minimap" width="148" height="148"></canvas>
-        <div class="hud-place"><span id="hud-region">营地</span> · <span id="hud-diff">难度 0.90</span></div>
-      </div>
-    </div>
-    <div class="hud-menu">
-      <button id="btn-inv" class="btn-mini">背包 I</button>
-      <button id="btn-quest" class="btn-mini">任务</button>
-      <button id="btn-map" class="btn-mini">地图 M</button>
-      <button id="btn-lobby" class="btn-mini">联机</button>
-      <button id="btn-settings" class="btn-mini">设置</button>
-    </div>
-    <!-- 触屏动作按钮（右下角，仅触屏/窄屏显示；ui.js 绑定为等效 E/空格/Q 键） -->
-    <div class="hud-actions">
-      <button id="btn-act-potion" class="btn-act">药水</button>
-      <button id="btn-act-roll" class="btn-act">翻滚</button>
-      <button id="btn-act-interact" class="btn-act big">交互</button>
-    </div>
-    <div id="toasts"></div>
-  </div>
-
-  <!-- ========== 背包面板 ========== -->
-  <div id="panel-inv" class="panel">
-    <div class="panel-head">背包与装备 <span class="panel-close">✕</span></div>
-    <div class="panel-body two-col">
-      <div>
-        <h3>已装备</h3>
-        <div id="inv-equipped"></div>
-      </div>
-      <div>
-        <h3>背包（点击装备，悬停查看属性）</h3>
-        <div id="inv-bag"></div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ========== 任务面板 ========== -->
-  <div id="panel-quest" class="panel">
-    <div class="panel-head">任务日志 <span class="panel-close">✕</span></div>
-    <div class="panel-body"><div id="quest-list"></div></div>
-  </div>
-
-  <!-- ========== 大地图面板 ========== -->
-  <div id="panel-map" class="panel wide">
-    <div class="panel-head">大陆地图（点击蓝色传送点传送）<span class="panel-close">✕</span></div>
-    <div class="panel-body map-body">
-      <canvas id="bigmap" width="520" height="520"></canvas>
-      <div class="map-side">
-        <p class="dim">红色=你的位置 · 蓝色=传送点<br>灰色=未探索区域</p>
-        <div class="zoom-row">
-          <button id="zoom-out" class="btn-mini">－缩小视野</button>
-          <button id="zoom-in" class="btn-mini">＋放大视野</button>
-        </div>
-        <h3>区域列表</h3>
-        <div id="region-list" class="region-list"></div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ========== 设置面板 ========== -->
-  <div id="panel-settings" class="panel">
-    <div class="panel-head">设置 <span class="panel-close">✕</span></div>
-    <div class="panel-body">
-      <h3>难度系数（0-2，影响敌人强度/数量与掉落）</h3>
-      <div class="slider-row">
-        <input id="diff-slider" type="range" min="0" max="2" step="0.05" value="0.9">
-        <span id="diff-val">0.90</span>
-      </div>
-      <div class="preset-row">
-        <button class="btn-mini diff-preset" data-v="0.4">休闲</button>
-        <button class="btn-mini diff-preset" data-v="0.9">普通</button>
-        <button class="btn-mini diff-preset" data-v="1.4">困难</button>
-        <button class="btn-mini diff-preset" data-v="2.0">地狱</button>
-      </div>
-      <h3>存档</h3>
-      <button id="btn-reset-save" class="btn danger">删除存档并重开</button>
-      <p class="dim">游戏每 20 秒自动存档，也可在死亡结算界面手动保存。</p>
-    </div>
-  </div>
-
-  <!-- ========== 联机大厅 ========== -->
-  <div id="panel-lobby" class="panel">
-    <div class="panel-head">联机大厅（1-4人，可一个人玩）<span class="panel-close">✕</span></div>
-    <div class="panel-body">
-      <div class="form-row"><label>昵称</label><input id="lobby-name" type="text" maxlength="8" value="勇者"></div>
-      <div class="form-row">
-        <label>房间码</label><input id="room-code" type="text" maxlength="6" placeholder="6位房间码">
-      </div>
-      <div class="btn-row">
-        <button id="btn-create-room" class="btn primary">创建房间</button>
-        <button id="btn-join-room" class="btn">加入房间</button>
-        <button id="btn-solo" class="btn">单人开始</button>
-        <button id="btn-leave-room" class="btn">离开房间</button>
-      </div>
-      <div id="lobby-status" class="lobby-status">当前单机。联机大厅支持 1-4 人（可一个人玩）。</div>
-      <h3>队伍成员</h3>
-      <div id="lobby-peers"></div>
-      <p class="dim">联机基于 WebRTC(PeerJS)，需要联网；离线时自动降级为单机模式。</p>
-    </div>
-  </div>
-
-  <!-- ========== 死亡结算 ========== -->
-  <div id="death-panel" class="overlay" style="display:none">
-    <div class="start-box">
-      <h1 class="logo red">你被击败了</h1>
-      <p id="death-stats" class="subtitle"></p>
-      <div class="btn-col">
-        <button id="btn-respawn" class="btn primary">在营地复活（银币 -10%）</button>
-        <button id="btn-death-save" class="btn">保存进度</button>
-      </div>
-    </div>
-  </div>
-
-</div>
-
-<!-- ========== 脚本（顺序=依赖顺序） ========== -->
-<script src="js/data/config.js"></script>
-<script src="js/core/utils.js"></script>
-<script src="js/core/input.js"></script>
-<script src="js/world/terrain.js"></script>
-<script src="js/world/worldmap.js"></script>
-<script src="js/systems/loot.js"></script>
-<script src="js/systems/combat.js"></script>
-<script src="js/systems/quest.js"></script>
-<script src="js/systems/save.js"></script>
-<script src="js/entity/player.js"></script>
-<script src="js/entity/enemy.js"></script>
-<script src="js/entity/npc.js"></script>
-<script src="js/entity/projectile.js"></script>
-<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js" crossorigin="anonymous"></script>
-<script src="js/net/multiplayer.js"></script>
-<script src="js/world/fx.js"></script>
-<script src="js/world/renderer.js"></script>
-<script src="js/ui/ui.js"></script>
-<script src="js/game.js"></script>
-<script>
-/* 启动引导：绑定开始界面按钮，启动主循环 */
-(function () {
-  var g = Legend.game;
-  var canvas = document.getElementById('game-canvas');
-  function resize() {
-    /* 缓冲分辨率 = CSS 宽 × DPR/2：1 游戏像素恒等于 2 物理像素。
-     * 桌面 DPR1 = 1/2 分辨率经典像素感；手机 DPR2/3 也清晰不糊（旧版在手机上只有 1/6，糊成一片） */
-    var dpr = Math.min(window.devicePixelRatio || 1, 3);   // 超高 DPR 封顶，控制填充率
-    var w = window.innerWidth, h = window.innerHeight;
-    canvas.width = Math.max(160, Math.round(w * dpr / 2));
-    canvas.height = Math.max(120, Math.round(h * dpr / 2));
-    canvas.style.width = w + 'px';
-    canvas.style.height = h + 'px';
-    if (Legend.Renderer.ctx) Legend.Renderer.ctx.imageSmoothingEnabled = false;
-    /* 通知渲染器视口逻辑尺寸（CSS 像素）并按宽度自动适配视野缩放 */
-    if (Legend.Renderer.setViewport) Legend.Renderer.setViewport(w, h);
-  }
-  window.addEventListener('resize', resize);
-  resize();
-
-  g.start();
-  g.state = 'menu';
-
-  document.getElementById('btn-new').onclick = function () {
-    var name = document.getElementById('input-name').value || '勇者';
-    document.getElementById('start-screen').style.display = 'none';
-    g.newGame(name);
-  };
-  document.getElementById('btn-continue').onclick = function () {
-    document.getElementById('start-screen').style.display = 'none';
-    g.continueGame();
-  };
-  document.getElementById('btn-open-lobby').onclick = function () {
-    var name = document.getElementById('input-name').value || '勇者';
-    g.player = g.player || new Legend.Player(1400.5, 1400.5, name);
-    Legend.UI.game = g;
-    Legend.UI.togglePanel('lobby');
-  };
-  if (Legend.Save.exists()) document.getElementById('btn-continue').classList.add('primary');
-
-  /* 注册 Service Worker：实现离线可玩（APK/PWA 基础），失败静默 */
-  if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-    navigator.serviceWorker.register('sw.js').catch(function () {});
-  }
-})();
-</script>
+  <!-- ===== 核心层 ===== -->
+  <script src="js/data/i18n.js"></script>
+  <script src="js/core/config.js"></script>
+  <script src="js/core/utils.js"></script>
+  <script src="js/core/assets.js"></script>
+  <script src="js/core/input.js"></script>
+  <script src="js/audio/audio.js"></script>
+  <!-- ===== 世界层 ===== -->
+  <script src="js/world/terrain.js"></script>
+  <script src="js/world/pathfinding.js"></script>
+  <script src="js/world/camera.js"></script>
+  <!-- ===== 玩法层 ===== -->
+  <script src="js/game/loot.js"></script>
+  <script src="js/game/inventory.js"></script>
+  <script src="js/game/player.js"></script>
+  <script src="js/game/enemy.js"></script>
+  <script src="js/game/combat.js"></script>
+  <script src="js/game/quest.js"></script>
+  <script src="js/game/npc.js"></script>
+  <script src="js/game/save.js"></script>
+  <script src="js/game/ui.js"></script>
+  <!-- ===== 联机层 ===== -->
+  <script src="js/net/net.js"></script>
+  <script src="js/net/lobby.js"></script>
+  <!-- ===== 引导层 ===== -->
+  <script src="js/core/engine.js"></script>
+  <script src="js/main.js"></script>
 </body>
 </html>

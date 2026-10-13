@@ -1,0 +1,150 @@
+/* ============================================================================
+   js/game/enemy.js —— 敌人系统（Q71 军队人类，Q72 固定型+缓慢型混合）
+   ----------------------------------------------------------------------------
+   职责：生成/更新敌人 AI。敌人是"人类军队"，非幻想怪物。两类行为：
+     - fixed 固定型（弩手/术士）：不移动，远程弹幕+范围预警（Q73）
+     - slow  缓慢型（士兵/队长）：仅在玩家进入警戒5格后慢速逼近（Q74），离开即停
+     精英/BOSS 用技能循环（Q37 三层AI）。难度不改移速（Q75）。
+
+   对外接口（window.LG.Enemy）：
+     .spawnRegion(region)  按区域生成敌人（密度随难度 Q63）
+     .update(dt) .list[]
+     .spawnBoss(region)
+     .damage(e, n)  由 combat 调用
+
+   依赖：config（类型/难度）、terrain、player（目标）、combat（伤害经bus）。
+   ========================================================================== */
+(function () {
+  'use strict';
+  const LG = (window.LG = window.LG || {});
+  const list = [];
+  let diff = LG.Config.DIFFICULTY.default;
+
+  function setDifficulty(d) { diff = d; }
+
+  /* 在区域内生成敌人（数量=密度×难度，Q63 线性） */
+  function spawnRegion(region) {
+    const base = 18; // 每区域基础敌人数
+    const n = Math.round(base * LG.Config.DIFFICULTY.density(diff) * (1 + region.lv * 0.1));
+    for (let i = 0; i < n; i++) {
+      // 随机找可走点
+      let x, y, tries = 0;
+      do {
+        x = region.cx + LG.U.randInt(-100, 100);
+        y = region.cy + LG.U.randInt(-100, 100);
+        tries++;
+      } while (!LG.Terrain.walkable(x, y) && tries < 20);
+      if (!LG.Terrain.walkable(x, y)) continue;
+      // 20% 精英（Q37）
+      const isElite = Math.random() < 0.2;
+      const pool = LG.Config.ENEMY_TYPES.filter((t) => !!t.elite === isElite);
+      const type = LG.U.pick(pool.length ? pool : LG.Config.ENEMY_TYPES);
+      spawn(type, x, y, region);
+    }
+  }
+
+  function spawn(type, x, y, region) {
+    const st = LG.Config.enemyStat(type, diff, region.lv);
+    const e = {
+      type, x, y, region,
+      hp: st.hp, maxHp: st.hp, dmg: st.dmg,
+      speed: st.speed, range: st.range, aspd: st.aspd, aggro: st.aggro,
+      state: 'idle',            // idle | chase | attack
+      atkCd: 0, skillCd: 0,
+      kind: type.elite ? 'elite' : 'normal',
+      facing: -1, phase: 0,
+    };
+    list.push(e);
+    return e;
+  }
+
+  function spawnBoss(region) {
+    if (!region.boss) return null;
+    // BOSS 用区域主题色放大绘制；属性=500%-1000%基础生命，伤害+15-40%（文档表）
+    const base = LG.Config.ENEMY_TYPES.find((t) => t.elite) || LG.Config.ENEMY_TYPES[0];
+    const hpMul = 5 + Math.random() * 5;      // 5-10倍
+    const dmgMul = 1.15 + Math.random() * 0.25;
+    const scale = LG.Config.DIFFICULTY.scale(diff);
+    const e = {
+      type: { id: region.boss, zh: region.zh + '首领', en: region.en + ' Boss', move: 'slow',
+              color: '#7a2f3c', elite: true },
+      x: region.cx, y: region.cy, region,
+      hp: Math.round(base.hp * hpMul * scale), maxHp: Math.round(base.hp * hpMul * scale),
+      dmg: Math.round(base.dmg * dmgMul * scale),
+      speed: 0.8, range: 3, aspd: 1.2, aggro: 12,
+      state: 'idle', atkCd: 0, skillCd: 3, kind: 'boss',
+      facing: -1, phase: 0, isBoss: true,
+    };
+    list.push(e);
+    LG.Sound.play('boss');
+    return e;
+  }
+
+  /* 每帧 AI */
+  function update(dt) {
+    const px = LG.Player.x, py = LG.Player.y;
+    for (let i = list.length - 1; i >= 0; i--) {
+      const e = list[i];
+      if (e.hp <= 0) { list.splice(i, 1); continue; }
+      const d = LG.U.dist(e.x, e.y, px, py);
+
+      // 固定型：不移动，仅在射程内攻击（Q73 远程弹幕+范围预警）
+      if (e.type.move === 'fixed') {
+        if (d <= e.range && !LG.Player.down) {
+          e.atkCd -= dt;
+          if (e.atkCd <= 0) {
+            e.atkCd = 1 / e.aspd;
+            LG.U.bus.emit('enemy_shoot', e); // combat 处理弹道/预警
+          }
+        }
+        continue;
+      }
+
+      // 缓慢型：警戒范围内才追击，离开则返回原地（Q74）
+      const leash = e.home ? LG.U.dist(e.x, e.y, e.home.x, e.home.y) : 0;
+      if (d <= e.aggro && !LG.Player.down) {
+        if (!e.home) e.home = { x: e.x, y: e.y };
+        e.state = 'chase';
+        // 缓慢移动（速度固定，难度不改移速 Q75）
+        const sp = e.speed * dt;
+        const nx = e.x + ((px - e.x) / d) * sp, ny = e.y + ((py - e.y) / d) * sp;
+        if (LG.Terrain.walkable(nx, e.y)) e.x = nx;
+        if (LG.Terrain.walkable(e.x, ny)) e.y = ny;
+        e.facing = px > e.x ? 1 : -1;
+        // 近身攻击
+        if (d <= e.range) {
+          e.atkCd -= dt;
+          if (e.atkCd <= 0) {
+            e.atkCd = 1 / e.aspd;
+            LG.U.bus.emit('enemy_melee', e);
+          }
+        }
+        // 精英/BOSS 技能循环（Q37）
+        if (e.kind !== 'normal') {
+          e.skillCd -= dt;
+          if (e.skillCd <= 0) {
+            e.skillCd = e.isBoss ? 4 : 6;
+            e.phase = (e.phase + 1) % 3;
+            LG.U.bus.emit('enemy_skill', e); // combat 处理范围技
+          }
+        }
+      } else if (e.home && leash > 1) {
+        // 脱战回家
+        const hd = LG.U.dist(e.x, e.y, e.home.x, e.home.y);
+        const sp = e.speed * dt;
+        e.x += ((e.home.x - e.x) / hd) * sp;
+        e.y += ((e.home.y - e.y) / hd) * sp;
+        e.state = 'idle';
+      }
+    }
+  }
+
+  function damage(e, n) {
+    e.hp -= n;
+    LG.U.bus.emit('enemy_hit', { e, n });
+    if (e.hp <= 0) LG.U.bus.emit('enemy_dead', e);
+  }
+
+  LG.Enemy = { list, update, spawnRegion, spawnBoss, damage, setDifficulty,
+    clear() { list.length = 0; } };
+})();

@@ -1,285 +1,171 @@
-# LEGEND 接口文档（模块间契约）
+# LEGEND 接口文档（docs/api.md）
 
-> 本游戏采用「分层 + 事件总线」架构，模块之间**只通过本文档列出的接口通信**。
-> 修改任意文件的内部实现，只要保持接口不变，就不会影响其他文件。
-
-## 分层与依赖（自底向上，`index.html` 按此顺序加载）
-
-```
-data/config  ──► 纯数据层（无依赖）
-core/utils   ──► 基础工具层（无依赖）
-core/input   ──► 输入层
-world/terrain ─► 地形生成（依赖 config/utils）
-world/worldmap► 世界状态（依赖 config/terrain/utils）
-systems/*     ► 玩法系统（loot/combat/quest/save）
-entity/*      ► 实体（player/enemy/npc/projectile）
-net/multiplayer► 联机（依赖 PeerJS）
-world/renderer► 渲染（依赖 config/terrain/worldmap/input）
-ui/ui         ► 界面（依赖以上全部）
-game          ► 主控（唯一同时认识所有模块的胶水层）
-```
+> 本文件是各模块的对外契约。**修改任何模块内部实现时，不得改变这里的签名**；
+> 新增能力请新建模块并在此登记。所有模块挂在 `window.LG` 命名空间下，
+> 彼此通过公开接口或事件总线 `LG.U.bus` 通信，互不直接引用内部实现。
 
 ---
 
-## 1. `Legend.Config` — `js/data/config.js`
+## 0. 全局约定
 
-| 成员 | 类型 | 说明 |
+| 约定 | 说明 |
+|---|---|
+| 坐标系 | 世界坐标单位为「格」（1格=32px），左上角为 (0,0)，向右为 +x，向下为 +y |
+| 时间 | 所有 `dt` 单位秒；`performance.now()/1000` 为全局时钟 |
+| 品质色 | N/D灰 R/C蓝 SR/B紫 SSR/A橙 S/SS红（CSS 类 `.q-<品质>`） |
+| 事件总线 | `LG.U.bus.on(evt, fn)` / `.emit(evt, data)`，见 §9 事件表 |
+
+加载顺序（index.html 中固定）：
+`i18n → config → utils → assets → input → audio → terrain → pathfinding → camera → loot → inventory → player → enemy → combat → quest → npc → save → ui → net → lobby → engine → main`
+
+---
+
+## 1. LG.Config（js/core/config.js）— 数值唯一可信源
+
+| 成员 | 签名/类型 | 说明 |
 |---|---|---|
-| `MAP_SIZE` | `2000` | 大陆尺寸（格） |
-| `TILE` | `32` | 每格像素 |
-| `PLAYER_MAX_LEVEL` | `10` | 人物/敌人/装备/武器等级上限 |
-| `DEFAULT_DIFFICULTY` | `0.9` | 默认难度系数 |
-| `MAX_PARTY` | `4` | 联机人数上限 |
-| `REGIONS` | `Region[]` | 11 个区域 + `wild` 过渡区 |
-| `getRegionAt(x,y)` | `→ Region` | 坐标所属区域（不含 wild 时返回 wild） |
-| `WEAPONS` / `getWeapon(id)` | `Weapon[]` | 7 种武器：铁刃/骑士剑/镰刀/弓/弩/法杖/盾 |
-| `ARMORS` / `getArmor(id)` | `Armor[]` | 4 部位：头盔/护甲/护腿/鞋 |
-| `WEAPON_QUALITIES` | `Q[]` | N/R/SR/SSR 概率表（0.80/0.15/0.035/0.015） |
-| `ARMOR_QUALITIES` | `Q[]` | D/C/B/A/S/SS 概率表（0.50/0.25/0.15/0.06/0.03/0.01） |
-| `BONDS` / `getBond(id)` | `Bond[]` | 8 种羁绊，含 `apply(stats)` 累加函数 |
-| `ENEMY_TEMPLATES` | `Obj` | 敌人模板（hp/dmg/speed/size/color/ranged） |
-| `REGION_ENEMIES` | `Obj` | 各区域敌人池 |
-| `REGION_BOSS` | `Obj` | 各区域 BOSS 模板 id |
-| `KILL_R` | `{normal:0.3, elite:2.0, boss:4.0}` | 击杀奖励倍率 r |
-| `DIFFICULTY` | `{MIN:0, MAX:2, DEFAULT:0.9, PRESETS[]}` | 难度系数 |
-| `levelScale(lv)` | `→ number` | 等级属性倍率（10 级 ≈ 3.0×） |
-| `expForLevel(lv)` | `→ number` | 升到下一级所需经验 |
-| `WALKABLE` | `Obj` | 地形可通行表 |
+| `TILE` | `32` | 瓦片像素 |
+| `WORLD` / `SIZE` | `2000` | 世界边长（格） |
+| `REGIONS` | `Region[]` | 10+1 区域：`{id, zh, en, cx, cy, dir, biome, lv, boss}` |
+| `DIFFICULTY` | `{min,max,default, scale(d), density(d), drop(d), currency(d)}` | Q33 连续滑块 0~2，默认 0.9 |
+| `QUALITY_W` / `QUALITY_A` | 品质表 | 武器 N/R/SR/SSR、装备 D~SS，含概率 `p`、羁绊数 `bonds:[min,max]` |
+| `WEAPONS` | 武器定义 | `{id, kind:'melee'\|'ranged'\|'magic'\|'shield', zh, en, base, range, aspd, arc?, proj?, aoe?}` |
+| `ARMOR_SLOTS` | `['helm','chest','legs','boots']` 对象化 | 四装备槽 |
+| `BONDS` | 羁绊8种 | `{id, zh, en, desc_zh, desc_en, apply(stats)}`，等概率随机、同类不叠加 |
+| `ENEMY_TYPES` | 敌人类型 | 人类军队：`{id, zh, move:'fixed'\|'slow', hp, dmg, range, aspd, speed, aggro, elite, proj?, aoe?}` |
+| `LORE` | 世界观 | `{zh, en}` 长文，用于开场与占卜师对话 |
+| `dropQuality(table, difficulty, bonusP)` | → 品质项 | Q34 难度加成放大高品质概率 |
+| `enemyStat(type, difficulty, regionLv)` | → `{hp,dmg,speed,...}` | Q75 难度不改移速 |
+| `silverExp(enemyLv, kind, difficulty, expMul)` | → `{silver, exp}` | 文档公式：敌等级×10×r×难度；r=0.3/2/4 |
+| `regionAt(x, y)` | → Region | 就近区域查询 |
 
-**Region 结构**：`{id, name, dir, cx, cy, r, tier, theme[], liberated?, safe?, desc}`
+## 2. LG.U（js/core/utils.js）
 
----
-
-## 2. `Legend.Utils` — `js/core/utils.js`
-
-| 成员 | 说明 |
+| 接口 | 说明 |
 |---|---|
-| `makeRng(seed)` | 种子随机函数，附加 `.range(a,b)` `.int(a,b)` `.pick(arr)` `.chance(p)` |
-| `clamp/lerp/dist/dist2/angleLerp` | 数学工具 |
-| `bus.on(ev,fn)` / `bus.off` / `bus.emit(ev,data)` | 事件总线 |
-| `store.save(key,obj)` / `load(key,dflt)` / `del(key)` | localStorage 封装（失败静默） |
-| `hexA(hex, a)` | 十六进制颜色转 `rgba()` |
+| `rng(seed)` | mulberry32 种子随机（世界生成可复现，Q59） |
+| `randInt(a,b)` / `pick(arr)` / `range([a,b])` / `clamp` / `lerp` / `dist` | 数学工具 |
+| `LS.get(k,def)` / `LS.set(k,v)` / `LS.del(k)` | 存储封装（无 localStorage 时降级内存） |
+| `bus.on/off/emit` | 事件总线 |
 
-**事件总线事件名**（`bus.on` 可监听）：
-`region_found` `region_liberated` `levelup` `loot` `equip` `heal` `dodge` `undead` `potion` `quest_accept` `quest_progress` `quest_ready` `quest_done` `difficulty`
+## 3. LG.Assets（js/core/assets.js）— 程序化像素图
 
----
+`tile(name)` `hero({skin,hair,hairColor,gender})` `enemy(type)` `boss(id,color)`
+`weaponIcon(id)` `armorIcon(slot,color)` `bondIcon(id)` `chest()` —— 均返回缓存的离屏 canvas（32×32，BOSS 64×64）。
 
-## 3. `Legend.Input` — `js/core/input.js`
+## 4. LG.Input（js/core/input.js）
 
-| 成员 | 说明 |
+| 接口 | 说明 |
 |---|---|
-| `attach(canvas)` | 绑定键鼠 + 触屏 |
-| `update(playerScreenX, playerScreenY)` | 每帧刷新方向与瞄准角（由 game 调用） |
-| `dirX` / `dirY` | 移动方向分量（-1~1，已归一化） |
-| `aimAngle` | 瞄准弧度 |
-| `mouseDown` | 鼠标左键按住（连发依据） |
-| `consumePress(key)` | 读取并清除一次性按键 |
-| `press(key)` | 外部注入一次性按键（触屏动作按钮用），key 同上表 |
-| `enabled` | 全局开关（打开 UI 面板时置 false） |
+| `init(canvas)` | 绑定鼠标/触屏/键盘；左半屏触摸=虚拟摇杆，右半=点击 |
+| `state` | `{click, moveVec, keys, joy, pinch, wheel}`（engine 每帧读取） |
+| `consumeClick()/consumePinch()/consumeWheel()` | 消费一次性输入 |
+| `down(action)` / `keyFor(a)` / `setKey(a,code)` | Q57 按键自定义（存 LS `keymap`） |
 
-**`consumePress` 可用 key**：`attack` `interact`(E/F) `inv`(I/B) `map`(M) `roll`(空格) `potion`(Q) `esc`
+## 5. LG.Terrain（js/world/terrain.js）
 
-**坐标空间**：`mouseX/mouseY`、`aimAngle` 相关计算均为 **视口 CSS 像素**，与
-`Renderer.vw()/vh()` 的逻辑空间一致（渲染层的 base transform 负责放大到缓冲分辨率）。
-
----
-
-## 4. `Legend.Terrain` — `js/world/terrain.js`
-
-| 成员 | 说明 |
+| 接口 | 说明 |
 |---|---|
-| `init(seed)` | 生成噪声场与道路网络 |
-| `tileAt(tx,ty)` | → `'water'/'grass'/'rock_high'/...`（带 6 万格缓存） |
-| `walkable(tx,ty)` | 是否可通行（水/熔岩/高山 false，桥 true） |
-| `themeAt(tx,ty)` | 所属区域对象 |
-| `randomWalkable(rng,tx,ty,tries)` | 附近找可走格（刷怪/宝箱用） |
+| `generate(seed)` | 手工框架+局部随机；含岛屿海岸线、区域基底、道路连通、迷宫、栅栏 |
+| `tileAt(x,y)` | `{type, height, water, walk, jump, wall}` |
+| `walkable(x,y)` / `jumpable(x,y)` / `isWater(x,y)` | 通行判定（水与墙阻挡，height=1 可跳） |
+| `regionOf(x,y)` | 区域归属 |
+| `fog.reveal(x,y)` / `fog.visible(x,y)` | Q17 迷宫战争迷雾 |
+| `TYPE` | 瓦片枚举 |
+
+## 6. LG.Path / LG.Camera
+
+- `LG.Path.find(sx,sy,tx,ty,maxSteps)` → `[{x,y}]`（A*，允许跳格通行，超限返回直线引导）
+- `LG.Path.nearestWalkable(x,y,radius)` → `{x,y}|null`
+- `LG.Camera.init(canvas)` `follow(x,y)` `update()`（消费缩放输入）`setZoom/zoomBy`
+  `worldToScreen(x,y)` `screenToWorld(x,y)` `view()` → `{x0,y0,x1,y1}` `zoomVal`
+
+## 7. 玩法模块
+
+### 7.1 LG.Loot（js/game/loot.js）
+- `rollWeapon(difficulty, regionLv, bonusP)` / `rollArmor(...)` → 装备实例
+  实例：`{slot, weaponId?|armorSlot?, kind?, quality, lv, stats:{dmg,aspd,range,crit|def,spd,dodge}, bonds:[id], _id}`
+- `dropFromEnemy(kind,difficulty,regionLv)` → `{silver, exp, items[]}`（普通12%/精英45%/BOSS必掉+保底高品质）
+- `openChest(difficulty,regionLv)` → 同上（品质加成 ×1.5）
+
+### 7.2 LG.Inv（js/game/inventory.js）
+- `bag`（40格数组） `equip`（weapon+四槽） `silver`
+- `add(item)` → bool；`equipItem(i)` / `unequip(slot)` / `enhance(itemOrId)`（Q35 银币强化，每级+5%，上限10）
+- `sell(i)` → 银币；`activeBonds()` → 去重羁绊（Q29）；`calcStats()` → 综合属性（基础+装备+羁绊归一化）
+
+### 7.3 LG.Player（js/game/player.js）
+- 只读属性：`x,y,level,exp,expTo,hp,maxHp,potions,mode,down,facing,jumping,blockUntil`
+- `spawn(x,y)` `update(dt)` `moveTo(x,y)`（A*寻路） `setMode('on'|'off'|'half')`（Q19 half=原地打不追击）
+- `gainExp(n)`（Q31 满级溢出转银币20%） `takeDamage(n)`（格挡/闪避/不死金牌判定）
+- `heal(n)` `usePotion()`（Q62） `block()`（Q23 减伤50%/2s/CD3s） `jump()`（Q21 伪跳跃）
+- `rescue()` / `revive()`（Q26/Q66 掉10%银币回营地）；`_raw` 供存档访问内部状态
+
+### 7.4 LG.Enemy（js/game/enemy.js）
+- `setDifficulty(d)` `spawnRegion(region)`（Q63 密度×难度） `spawnBoss(region)`（可重复 Q65）
+- `update(dt)`（fixed=弹幕、slow=警戒5格追击/脱战回家 Q74、精英/BOSS技能循环）
+- `damage(e,n)` `list[]` `clear()`
+
+### 7.5 LG.Combat（js/game/combat.js）
+- `init()` 订阅战斗事件；`update(dt)` 推进弹道+特效+玩家自动攻击
+- `projectiles[]` `effects[]`（text/slash/warn/aoe，Q25 轻量反馈）
+
+### 7.6 LG.Quest（js/game/quest.js）
+- `init()` 构建主线（各区域BOSS讨伐链）+支线（击杀/探索/收集/护送 Q39/Q40）
+- `accept(id)` `submit(id)`（Q43 固定+概率装备） `progress(type,key,n)` `checkExplore(x,y)`
+- `all[]` `active[]` `rebuild()`
+
+### 7.7 LG.NPC（js/game/npc.js）
+- `spawnAll()` 营地6功能NPC+各区1向导（Q42）；`nearby(x,y)` `interact(npc)`（经bus通知ui开面板）
+- `list[]` `update(dt)`
+
+### 7.8 LG.Save（js/game/save.js）
+- `save(slot)` `load(slot)` `listSlots()` `remove(slot)` `exportSlot/importSlot`
+- `autosave()`（60s+卸载前） `snapshot()`；存 `{seed, player, inv, quest, difficulty}`（Q59 种子+增量）
+
+### 7.9 LG.UI（js/game/ui.js）
+- `init(canvas)` `drawHUD()` `toast(msg)` `panel(title,html)` `closePanel()`
+- 五页：`renderBag() renderStats() renderQuests() renderMap() renderSettings()`（Q50）
+- `charCreate(cb)`（Q51） `dialog(npc,lines)` `tutorial()`（Q67 可跳过）
+- 地图页点击即传送（Q13）；设置含音量/亮度/按键/语言（Q49/Q57）
+
+## 8. 联机模块
+
+### 8.1 LG.Net（js/net/net.js）
+- `isHost` `connected` `difficulty` `roomId` `peers{}`
+- `createRoom()` → `Promise<{roomId, code}>`；`join(码或房间号)` → `Promise<应答码>`；
+  `acceptAnswer(code)`；`send(obj)`（客户端→房主）；`broadcast(obj)`
+- 同浏览器：BroadcastChannel 自动信令；跨设备：完整码复制粘贴；局域网可选 `node tools/lan-signal.js`
+
+### 8.2 LG.Lobby（js/net/lobby.js）
+- `show()` 大厅面板（Q52 在线列表+房间+角色形象） `players[]`
+- 确认开局 emit `start_game {players, host}`；单人=1人房（Q1）
+
+## 9. LG.Engine（js/core/engine.js）— 装配层
+
+- `start()` 主菜单；`scene` `fps`；`bindNet()`（main.js 调用）
+- 内部职责：主循环、渲染裁剪、区域BGM切换、BOSS触发、宝箱布置、联机快照10Hz
+
+### 事件总线表（跨模块契约）
+
+| 事件 | 触发方 → 订阅方 | 数据 |
+|---|---|---|
+| `enemy_melee/enemy_shoot/enemy_skill` | enemy → combat | enemy 实例 |
+| `enemy_hit/enemy_dead/enemy_killed` | combat/enemy → loot/quest/ui | `{e,n}` 或 enemy |
+| `damage/dodge` | player → combat/ui | `{target,amount}` |
+| `player_down` | player → ui | player |
+| `levelup` | player → ui | lv |
+| `quest_ready/quest_done` | quest → ui | quest |
+| `open_shop/open_enhance/open_dialog/open_quests` | npc → ui | npc |
+| `toast` | 任意 → ui | msg |
+| `enter_region` | engine → 外部 | region |
+| `start_game` | lobby → engine | `{players,host}` |
+| `net_state/net_msg/peer_input` | net → lobby/engine | 协议消息 |
+| `lang` | i18n → main | 'zh'\|'en' |
 
 ---
 
-## 5. `Legend.World` — `js/world/worldmap.js`
+## 10. 打包与运行
 
-| 成员 | 说明 |
-|---|---|
-| `generate(seed)` | 生成传送点/宝箱/刷怪点 |
-| `explored` / `liberated` | `{regionId: true}` 已探索/已解放 |
-| `teleports[]` | `[{id,name,x,y,region,unlocked}]` |
-| `chests[]` | `[{x,y,opened,rare,region}]` |
-| `unlockRegionAt(x,y)` | 进入新区时解锁，返回 Region 或 null |
-| `nearestTeleport(x,y)` / `nearestChest(x,y,maxDist)` | 最近对象 |
-| `addKill(regionId, isBoss)` | 解放进度，返回是否刚解放 |
-| `liberateRegion(regionId)` | 直接解放 |
-| `minimapData(cells)` | → `{size, cells[]}` 小地图色块 |
-
----
-
-## 6. `Legend.Loot` — `js/systems/loot.js`
-
-| 成员 | 说明 |
-|---|---|
-| `rollWeaponQuality(rng)` / `rollArmorQuality(rng)` | 按概率表抽品质 |
-| `rollBonds(rng, q)` | 按品质区间抽羁绊 id（去重） |
-| `makeWeapon(rng, opts)` / `makeArmor(rng, opts)` | 生成物品实例 |
-| `weaponStats(item)` | → `{dmg,aspd,range,block,kind,pierce,aoe,crit3,lifesteal,undead}` |
-| `armorStats(item)` | → `{def,hp,move,dmg,dodge,crit3,lifesteal,undead,exp}` |
-| `itemName(item)` / `itemDesc(item)` / `itemNameColor(item)` | 中文名/描述/品质色 |
-| `rollEnemyLoot(rng, enemy, diff)` | 敌人掉落列表 |
-| `rollChestLoot(rng, rare, lv, diff)` | 宝箱掉落列表 |
-| `hydrate(item)` | 读档后重建 `_base/_q` |
-| `asRng(rng)` | 兼容包装：允许直接传 `Math.random` |
-
-**物品实例结构**：`{uid, slot, type, lv, quality, bonds[], _base, _q}`
-`slot` 取值：`weapon` `helmet` `chest` `legging` `boots`
-
----
-
-## 7. `Legend.Combat` — `js/systems/combat.js`
-
-| 成员 | 说明 |
-|---|---|
-| `rollDamage(base, crit3)` | → `{dmg, crit3}` 三倍暴击判定 |
-| `killReward(enemy, diff)` | → `{silver, exp}` = `lv×10×r×难度系数` |
-| `meleeHits(px,py,angle,range,enemies,halfAngle?)` | 近战扇形命中列表 |
-| `applyLifesteal(player, dealt)` | 吸血结算 |
-
----
-
-## 8. `Legend.Quest` — `js/systems/quest.js`
-
-| 成员 | 说明 |
-|---|---|
-| `list` | 10 个任务定义（含 `req` 前置链） |
-| `active` / `done` | 进行中 `[{id,progress}]` / 已完成集合 |
-| `available()` | 可接取任务列表 |
-| `accept(id)` | 接取 |
-| `onEvent(type, region)` | 事件上报：`kill` `chest` `explore` `boss` |
-| `turnIn(id, player, game)` | 交付 → `{quest, texts[]}` |
-| `serialize()` / `loadData(obj)` | 存档 |
-
----
-
-## 9. `Legend.Save` — `js/systems/save.js`
-
-`save(game)` / `load()` / `clear()` / `exists()`，存储键 `legend_save_v1`。
-
----
-
-## 10. 实体
-
-### `Legend.Player(x, y, name)`
-| 成员 | 说明 |
-|---|---|
-| `update(dt, input, game)` | 移动/翻滚/攻击/药水 |
-| `stats` | `{dmg,aspd,range,def,dodge,move,crit3,lifesteal,exp,undead,block,kind,pierce,aoe}` |
-| `equip(item)` / `unequip(slot)` / `pick(item)` | 装备管理 |
-| `takeDamage(amount, game)` | 结算：闪避→防御减伤→盾减伤→不死金牌 |
-| `heal(n)` / `gainExp(n)` / `gainSilver(n)` | 数值增长 |
-| `serialize()` / `Player.load(data)` | 存档 |
-
-### `Legend.Enemy(tplId, x, y, lv, rank, diff, rng)`
-`rank`: `'normal'|'elite'|'boss'`。`update(dt, player, game)` 驱动 AI，`takeDamage(n, game, byPlayer)` 返回是否死亡。
-
-### `Legend.NPC(name, x, y, role, greet)`
-`role`: `'quest'|'shop'`。`near(player)` 距离检测，`interact(game)` 打开面板。
-
-### `Legend.Projectile`
-`spawn(cfg)` 生成，`list` 存放，`updateAll(dt, game)` 统一飞行与碰撞（命中回调交给 game）。
-`cfg`: `{x,y,angle,speed,dmg,range,side,kind,pierce,aoe,color}`
-
----
-
-## 11. `Legend.Net` — `js/net/multiplayer.js`
-
-| 成员 | 说明 |
-|---|---|
-| `available()` | PeerJS 是否加载 |
-| `createRoom(name, cb)` | 建房 → `cb({ok, code})`（6 位房间码） |
-| `joinRoom(code, name, cb)` | 加入 → `cb({ok, code})` |
-| `leave()` | 离开 |
-| `syncSelf(player)` / `syncEnemies(list)` | 每帧同步（host 权威） |
-| `send(obj)` / `onMessage(fn)` | 消息收发 |
-| `status` / `isHost` / `code` / `peers{}` / `count()` | 状态查询 |
-
-**消息类型**：`hello` `welcome` `pos` `enemy` `chat` `leave`
-
----
-
-## 11.5 `Legend.Fx` — `js/world/fx.js`
-
-纯表现层（不参与游戏逻辑），负责画面氛围与打击感。
-
-| 成员 | 说明 |
-|---|---|
-| `init()` | 重置粒子池与震动状态（新档/换世界时调用） |
-| `update(dt, game)` | 每帧推进：昼夜循环、震动衰减、天气粒子生成与移动 |
-| `draw(ctx, game)` | 绘制天气粒子 + 全屏闪光（画在光照层之上） |
-| `applyLighting(ctx, game)` | 区域环境色 + 昼夜暗调 + 暗角 + 玩家柔光 + 低血红晕 + 受击红闪 |
-| `shake(mag, dur)` | 屏幕震动（`mag` 按旧 1/2 分辨率标定、内部 ×2；`shakeX/shakeY` 输出 CSS 像素并被 `worldToScreen` 自动叠加） |
-| `flash(color, alpha, dur)` | 全屏闪光（升级/解放/BOSS 登场） |
-| `hurt(player, amount)` | 玩家受击红闪计时 |
-| `dayPhase` | 昼夜相位 0~1（约 5 分钟一循环） |
-
-**区域氛围表**：每个区域有独立的 `tint`（环境色）、`weather`（雪/雨/火星/落叶/尘埃/暗影/薄雾）、
-`light`（玩家柔光色），集中在 `fx.js` 顶部 `MOOD` 表，改氛围只需改这张表。
-
-**接入点**：`game.js` 在近战/弹道/受伤/爆炸时调用 `shake`；升级、区域解放、BOSS 登场调用 `flash`；
-`renderer.js` 在 `draw()` 末尾依次调用 `applyLighting` 与 `draw`。
-
----
-
-## 12. `Legend.Renderer` — `js/world/renderer.js`
-
-| 成员 | 说明 |
-|---|---|
-| `attach(canvas)` | 绑定画布 |
-| `setViewport(w, h)` | 设置视口逻辑尺寸（CSS 像素）；宽度变化时自动 `fitZoom`（index.html 的 resize 调用） |
-| `fitZoom()` | 按视口宽度适配缩放：任何设备都显示约 10 格宽（手机不再只有 3 格视野） |
-| `vw()` / `vh()` | 视口逻辑宽高（CSS 像素；未初始化时退化为画布宽高的一半） |
-| `camera` | `{x, y, zoom}`（`zoom` 单位：CSS 像素/格 ÷ TILE；桌面 ≈4.0、手机 ≈1.2） |
-| `worldToScreen(wx,wy)` / `screenToWorld(sx,sy)` | 坐标换算 |
-| `draw(game, dt)` | 每帧绘制入口 |
-| `drawMinimap(ctx, game, x, y, size)` | 在指定位置画小地图 |
-| `floatText(x,y,text,color)` / `addSlash` / `addSparks` | 飘字/挥砍弧/粒子 |
-
-**坐标空间**：`draw()` 开头用 `setTransform(缓冲宽/逻辑宽, …)` 建立基础变换，
-此后**全部绘制与 `worldToScreen` 输出均为视口 CSS 像素**——与鼠标/触摸坐标天然同空间
-（瞄准所见即所得），清晰度只由缓冲分辨率决定（index.html 按 `DPR/2` 计算，与视野解耦）。
-
----
-
-## 13. `Legend.UI` — `js/ui/ui.js`
-
-| 成员 | 说明 |
-|---|---|
-| `init(game)` | 绑定 DOM 与事件 |
-| `toast(text, color)` | 右上角提示 |
-| `togglePanel(name)` / `closeAll()` | 面板：`inv` `quest` `map` `lobby` `settings` |
-| `openQuestPanel(npc)` / `openShopPanel(npc)` | NPC 交互面板 |
-| `refreshHud()` / `drawHudMinimap()` | HUD 刷新 |
-| `showDeath()` | 死亡结算 |
-
----
-
-## 14. `Legend.Game` — `js/game.js`（全局单例 `Legend.game`）
-
-| 成员 | 说明 |
-|---|---|
-| `start()` | 启动主循环（内部完成 Renderer/Input/UI 初始化） |
-| `newGame(name, seed)` / `continueGame()` | 开局/读档 |
-| `state` | `'menu' \| 'play' \| 'dead'` |
-| `player` / `enemies[]` / `npcs[]` / `difficulty` / `totalKills` | 运行时状态 |
-| `playerAttack(p)` / `enemyMelee(e,p)` / `enemyShoot(e,p)` | 攻击结算 |
-| `projectileHit(pj)` / `areaDamage(x,y,r,dmg,side)` | 命中与 AOE |
-| `interact()` / `interactHint()` | E 键交互 |
-| `respawn()` / `onPlayerDeath()` | 死亡与复活 |
-| `spawnEnemy(instant)` / `maybeSpawnBoss(rg)` | 刷怪与 BOSS |
-
----
-
-## 扩展指南
-
-- **加一种武器**：只需在 `Config.WEAPONS` 加一条；`renderer.js` 的 `drawWeapon` 加一个绘制分支（可选）。
-- **加一种羁绊**：在 `Config.BONDS` 加一条（写 `apply(stats)`），无需改其他文件。
-- **加一个区域**：在 `Config.REGIONS` 加条目 + `Config.REGION_ENEMIES` 加敌人池，地形/传送点/宝箱自动生成。
-- **加一个任务**：在 `Quest.list` 加定义（`type/target/need/req/reward`）。
-- **改数值**：全部集中在 `config.js` 与 `combat.js`，不动实体代码。
+- **本地运行**：任意静态服务器（`python -m http.server 8080`）或直接双击 `index.html`（file:// 亦可，无 ES-module 依赖）
+- **Android APK**：`npm i @capacitor/core @capacitor/cli @capacitor/android && npx cap add android && npx cap sync && npx cap open android`（见 README）
+- **局域网联机**（可选）：`node tools/lan-signal.js`

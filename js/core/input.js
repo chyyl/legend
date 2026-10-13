@@ -1,139 +1,151 @@
-/* =============================================================================
- * 文件：js/core/input.js
- * 职责：统一键盘、鼠标、触屏输入。提供“持续状态”（方向键/移动）与
- *       “一次性事件”（攻击、交互、打开背包等）两种读取方式。
- * 依赖：无
- * 对外接口（window.Legend.Input）：
- *   - attach(canvas)                       绑定事件
- *   - dirX / dirY                          移动方向分量（-1/0/1）
- *   - mouseX / mouseY / mouseDown          鼠标画布坐标与按下状态
- *   - aimAngle                             当前瞄准弧度（以玩家为原点）
- *   - consumePress(key)                    读取并清除一次性按键（'attack'/'interact'/'inv'/'map'/'roll'）
- *   - press(key)                            外部注入一次性按键（触屏动作按钮用）
- *   - touchMove(dx, dy)                    虚拟摇杆写入（触屏）
- *   - enabled                              全局开关（UI 打开时暂停游戏输入）
- * 被引用：game.js / player.js
- * =============================================================================
- */
-(function (global) {
+/* ============================================================================
+   js/core/input.js —— 统一输入层（Q18 点击寻路+WASD/摇杆，Q14 捏合缩放）
+   ----------------------------------------------------------------------------
+   职责：把鼠标/触屏/键盘抽象成统一状态，供 engine/player 每帧读取。
+         处理点击寻路、虚拟摇杆、捏合缩放、滚轮缩放、按键自定义。
+
+   对外接口（window.LG.Input）：
+     .init(canvas)
+     .state  = { click, moveVec:{x,y}, pinch, wheel, keys:{}, joy }
+     .consumeClick() -> {x,y}|null   消费一次屏幕点击（用于移动/交互）
+     .consumePinch() -> delta|null   消费一次捏合缩放增量
+     .down(key) .setKey(action, code) .keyFor(action)
+     .showJoystick .hideJoystick
+
+   事件：不直接依赖其它模块，仅在 init 后由 engine 轮询。
+   ========================================================================== */
+(function () {
   'use strict';
-  var L = global.Legend = global.Legend || {};
-  var Input = {
-    enabled: true,
-    dirX: 0, dirY: 0,
-    mouseX: 0, mouseY: 0, mouseDown: false,
-    aimAngle: 0,
-    _keys: {},
-    _press: {},
-    _canvas: null,
-    _touch: { active: false, id: null, ox: 0, oy: 0, dx: 0, dy: 0 }
+  const LG = (window.LG = window.LG || {});
+
+  const state = {
+    click: null,          // {x,y} 屏幕坐标，待消费
+    moveVec: { x: 0, y: 0 }, // WASD/摇杆合成移动向量
+    keys: {},             // 按下中的键
+    pinch: null,          // 捏合缩放增量
+    wheel: 0,             // 滚轮缩放增量
+    joy: null,            // 虚拟摇杆 {base:{x,y}, cur:{x,y}}
+    lastTapTime: 0,
   };
 
-  Input.attach = function (canvas) {
-    Input._canvas = canvas;
+  /* 按键自定义（Q57）：action -> keyCode */
+  let keymap = LG.U.LS.get('keymap', {
+    up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD',
+    // 空格=跳跃（教程口径），J=手动攻击，F=格挡，Q=药水
+    attack: 'KeyJ', block: 'KeyF', jump: 'Space', potion: 'KeyQ',
+    bag: 'KeyB', map: 'KeyM', quest: 'KeyJ', mode: 'Tab',
+  });
 
-    global.addEventListener('keydown', function (e) {
-      if (!Input.enabled) return;
-      var k = e.key.toLowerCase();
-      if (!Input._keys[k]) {
-        if (k === 'e' || k === 'f') Input._press.interact = true;
-        if (k === 'i' || k === 'b') Input._press.inv = true;
-        if (k === 'm') Input._press.map = true;
-        if (k === ' ') Input._press.roll = true;
-        if (k === 'q') Input._press.potion = true;
-        if (k === 'escape') Input._press.esc = true;
-      }
-      Input._keys[k] = true;
-      if (k === ' ' || k === 'w' || k === 'a' || k === 's' || k === 'd') e.preventDefault();
-    });
-    global.addEventListener('keyup', function (e) { Input._keys[e.key.toLowerCase()] = false; });
+  function keyFor(a) { return keymap[a]; }
+  function setKey(a, code) { keymap[a] = code; LG.U.LS.set('keymap', keymap); }
 
-    function updMouse(e) {
-      var r = canvas.getBoundingClientRect();
-      Input.mouseX = e.clientX - r.left;
-      Input.mouseY = e.clientY - r.top;
-    }
-    canvas.addEventListener('mousemove', updMouse);
-    canvas.addEventListener('mousedown', function (e) {
-      updMouse(e);
-      if (!Input.enabled) return;
-      Input.mouseDown = true; Input._press.attack = true;
-    });
-    global.addEventListener('mouseup', function () { Input.mouseDown = false; });
-    canvas.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+  /* ---------- 屏幕坐标归一化（考虑设备像素比） ---------- */
+  let cvs = null, DPR = 1;
+  function pos(e) {
+    const r = cvs.getBoundingClientRect();
+    return { x: (e.clientX - r.left), y: (e.clientY - r.top) };
+  }
 
-    /* ---- 触屏：左半屏虚拟摇杆移动，右半屏点击攻击/瞄准 ---- */
-    canvas.addEventListener('touchstart', function (e) {
-      if (!Input.enabled) return;
+  function init(canvas) {
+    cvs = canvas;
+    DPR = Math.min(window.devicePixelRatio || 1, 2); // 限2倍，兼顾Android5性能
+
+    /* ===== 鼠标 ===== */
+    canvas.addEventListener('mousedown', (e) => { state.click = pos(e); });
+    canvas.addEventListener('wheel', (e) => { e.preventDefault(); state.wheel += e.deltaY > 0 ? 0.1 : -0.1; }, { passive: false });
+
+    /* ===== 触屏：单指点击/移动 = 摇杆或点击，双指 = 捏合缩放 ===== */
+    const touches = {};
+    let pinchStart = null;
+    canvas.addEventListener('touchstart', (e) => {
       e.preventDefault();
-      for (var i = 0; i < e.changedTouches.length; i++) {
-        var t = e.changedTouches[i];
-        var r = canvas.getBoundingClientRect();
-        var x = t.clientX - r.left, y = t.clientY - r.top;
-        if (x < r.width * 0.45 && !Input._touch.active) {
-          Input._touch.active = true; Input._touch.id = t.identifier;
-          Input._touch.ox = x; Input._touch.oy = y;
-          Input._touch.dx = 0; Input._touch.dy = 0;
+      for (const t of e.changedTouches) {
+        touches[t.identifier] = pos(t);
+        // 左半屏出现触摸 -> 虚拟摇杆；右半屏 -> 点击
+        if (t.clientX < window.innerWidth / 2) {
+          state.joy = { base: pos(t), cur: pos(t) };
         } else {
-          Input.mouseX = x; Input.mouseY = y;
-          Input.mouseDown = true; Input._press.attack = true;
+          state.click = pos(t);
         }
       }
+      if (e.touches.length === 2) {
+        pinchStart = { d: touchDist(e), zoom: 1 };
+        state.joy = null; // 双指时不显示摇杆
+      }
     }, { passive: false });
-    canvas.addEventListener('touchmove', function (e) {
+
+    canvas.addEventListener('touchmove', (e) => {
       e.preventDefault();
-      for (var i = 0; i < e.changedTouches.length; i++) {
-        var t = e.changedTouches[i];
-        if (t.identifier === Input._touch.id) {
-          var r = canvas.getBoundingClientRect();
-          var dx = (t.clientX - r.left) - Input._touch.ox;
-          var dy = (t.clientY - r.top) - Input._touch.oy;
-          var m = Math.max(1, Math.hypot(dx, dy));
-          var k = Math.min(1, m / 40);           // 40px 推满
-          Input._touch.dx = (dx / m) * k;
-          Input._touch.dy = (dy / m) * k;
+      for (const t of e.changedTouches) {
+        const p = pos(t);
+        if (state.joy && touches[t.identifier] &&
+            Math.abs(state.joy.base.x - p.x) < 200) {
+          state.joy.cur = p;
         }
+      }
+      if (e.touches.length === 2 && pinchStart) {
+        const d = touchDist(e);
+        state.pinch = (d - pinchStart.d) / 200; // 归一化缩放增量
+        pinchStart.d = d;
       }
     }, { passive: false });
+
     function endTouch(e) {
-      for (var i = 0; i < e.changedTouches.length; i++) {
-        if (e.changedTouches[i].identifier === Input._touch.id) {
-          Input._touch.active = false; Input._touch.id = null;
-          Input._touch.dx = 0; Input._touch.dy = 0;
-        }
-      }
-      Input.mouseDown = false;
+      e.preventDefault();
+      for (const t of e.changedTouches) delete touches[t.identifier];
+      if (e.touches.length < 2) { pinchStart = null; }
+      if (Object.keys(touches).length === 0) state.joy = null;
     }
-    canvas.addEventListener('touchend', endTouch);
-    canvas.addEventListener('touchcancel', endTouch);
-  };
+    canvas.addEventListener('touchend', endTouch, { passive: false });
+    canvas.addEventListener('touchcancel', endTouch, { passive: false });
 
-  /* 每帧由 game.js 调用，刷新移动方向与瞄准角（canvas 中心为玩家屏幕位置） */
-  Input.update = function (playerScreenX, playerScreenY) {
-    if (!Input.enabled) { Input.dirX = 0; Input.dirY = 0; Input.mouseDown = false; return; }
-    var x = 0, y = 0;
-    if (Input._keys['w'] || Input._keys['arrowup']) y -= 1;
-    if (Input._keys['s'] || Input._keys['arrowdown']) y += 1;
-    if (Input._keys['a'] || Input._keys['arrowleft']) x -= 1;
-    if (Input._keys['d'] || Input._keys['arrowright']) x += 1;
-    if (Input._touch.active) { x += Input._touch.dx; y += Input._touch.dy; }
-    var m = Math.hypot(x, y);
-    if (m > 1) { x /= m; y /= m; }
-    Input.dirX = x; Input.dirY = y;
-
-    if (playerScreenX != null) {
-      Input.aimAngle = Math.atan2(Input.mouseY - playerScreenY, Input.mouseX - playerScreenX);
+    function touchDist(e) {
+      const a = e.touches[0], b = e.touches[1];
+      return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
     }
-  };
 
-  Input.consumePress = function (key) {
-    if (Input._press[key]) { Input._press[key] = false; return true; }
-    return false;
-  };
-  /* 供触屏动作按钮（HUD 右下角）注入一次性按键，语义与键盘一致 */
-  Input.press = function (key) { Input._press[key] = true; };
-  Input.clearPresses = function () { Input._press = {}; };
-  Input.keyDown = function (k) { return !!Input._keys[k]; };
+    /* ===== 键盘（Q18 Windows11 用 WASD） ===== */
+    window.addEventListener('keydown', (e) => {
+      state.keys[e.code] = true;
+      updateMoveVec();
+    });
+    window.addEventListener('keyup', (e) => {
+      state.keys[e.code] = false;
+      updateMoveVec();
+    });
+    window.addEventListener('resize', () => {
+      cvs.width = window.innerWidth * DPR;
+      cvs.height = window.innerHeight * DPR;
+    });
+    // 初始尺寸
+    cvs.width = window.innerWidth * DPR;
+    cvs.height = window.innerHeight * DPR;
+  }
 
-  L.Input = Input;
-})(window);
+  function updateMoveVec() {
+    let x = 0, y = 0;
+    if (state.keys[keymap.left]) x -= 1;
+    if (state.keys[keymap.right]) x += 1;
+    if (state.keys[keymap.up]) y -= 1;
+    if (state.keys[keymap.down]) y += 1;
+    // 键盘优先；若无键盘输入且有摇杆，则用摇杆
+    if (x === 0 && y === 0 && state.joy) {
+      const dx = state.joy.cur.x - state.joy.base.x;
+      const dy = state.joy.cur.y - state.joy.base.y;
+      const m = Math.hypot(dx, dy);
+      if (m > 12) { x = dx / m; y = dy / m; } // 摇杆死区12px
+    }
+    const m = Math.hypot(x, y);
+    state.moveVec = m > 0 ? { x: x / m, y: y / m } : { x: 0, y: 0 };
+  }
+
+  LG.Input = {
+    state, init,
+    consumeClick() { const c = state.click; state.click = null; return c; },
+    consumePinch() { const p = state.pinch; state.pinch = null; return p; },
+    consumeWheel() { const w = state.wheel; state.wheel = 0; return w; },
+    down(action) { return !!state.keys[keymap[action]]; },
+    keyFor, setKey, keymap,
+    updateMoveVec, // 摇杆每帧需重算
+  };
+})();
