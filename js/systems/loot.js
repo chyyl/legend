@@ -3,7 +3,7 @@
  * 职责：物品生成与品质/羁绊随机（要求：武器品质 N/R/SR/SSR 按概率刷新，
  *       装备品质 D/C/B/A/S/SS 按概率掉落，武器装备等级 1-10，
  *       羁绊按品质给 0-4 个）。同时负责物品的最终属性计算。
- * 依赖：js/data/config.js、js/core/utils.js
+ * 依赖：js/data/config.js、js/core/utils.js（asRng 兼容包装）
  * 对外接口（window.Legend.Loot）：
  *   - rollWeaponQuality(rng)        -> 品质对象
  *   - rollArmorQuality(rng)         -> 品质对象
@@ -21,10 +21,18 @@
 (function (global) {
   'use strict';
   var L = global.Legend = global.Legend || {};
-  var Config = L.Config;
+  var Config = L.Config, Utils = L.Utils;   // utils 先于本文件加载
 
   var Loot = {};
   var uidSeq = 1;
+
+  /* ---- 随机源兼容包装：
+   * 允许调用方直接传 Math.random（裸函数），自动补齐 range/int/pick/chance，
+   * 避免 "rng.chance is not a function" 这类运行时错误。 ---- */
+  function asRng(rng) {
+    return Utils.asRng(rng);            // 统一委托到 core/utils，避免重复实现漂移
+  }
+  Loot.asRng = asRng;
 
   /* ---- 按概率表抽取 ---- */
   function rollByProb(rng, table) {
@@ -35,11 +43,12 @@
     }
     return table[table.length - 1];
   }
-  Loot.rollWeaponQuality = function (rng) { return rollByProb(rng, Config.WEAPON_QUALITIES); };
-  Loot.rollArmorQuality = function (rng) { return rollByProb(rng, Config.ARMOR_QUALITIES); };
+  Loot.rollWeaponQuality = function (rng) { return rollByProb(asRng(rng), Config.WEAPON_QUALITIES); };
+  Loot.rollArmorQuality = function (rng) { return rollByProb(asRng(rng), Config.ARMOR_QUALITIES); };
 
   /* ---- 羁绊抽取：按品质给区间数量，随机不重复 ---- */
   Loot.rollBonds = function (rng, q) {
+    rng = asRng(rng);
     var min = q.bonds[0], max = q.bonds[1];
     if (max <= 0) return [];
     var n = rng.int(min, max);
@@ -52,6 +61,7 @@
 
   /* ---- 武器实例 ---- */
   Loot.makeWeapon = function (rng, opts) {
+    rng = asRng(rng);
     opts = opts || {};
     var tpl = opts.base || rng.pick(Config.WEAPONS);
     var q = opts.quality || Loot.rollWeaponQuality(rng);
@@ -71,6 +81,7 @@
 
   /* ---- 装备实例 ---- */
   Loot.makeArmor = function (rng, opts) {
+    rng = asRng(rng);
     opts = opts || {};
     var tpl = opts.base || rng.pick(Config.ARMORS);
     var q = opts.quality || Loot.rollArmorQuality(rng);
@@ -163,6 +174,7 @@
   /* ---- 敌人掉落（要求：敌人武器装备属性为玩家的30%，此处直接掉落玩家可用物品，
    *       并按难度系数提升品质权重） ---- */
   Loot.rollEnemyLoot = function (rng, enemy, diff) {
+    rng = asRng(rng);
     var out = [];
     var lv = enemy.lv;
     var boss = enemy.rank === 'boss', elite = enemy.rank === 'elite';
@@ -179,6 +191,7 @@
 
   /* ---- 宝箱掉落（要求：可以开出好东西） ---- */
   Loot.rollChestLoot = function (rng, rare, lv, diff) {
+    rng = asRng(rng);
     var out = [];
     var n = rare ? Config.CHEST.RARE_ITEMS : Config.CHEST.BASE_ITEMS;
     var qBoost = 1 + Math.max(0, diff - Config.DEFAULT_DIFFICULTY) * 0.6;
@@ -192,6 +205,11 @@
       out.push(Loot.makeWeapon(rng, { lv: lv, quality: q }));
     }
     return out;
+  };
+
+  /* ---- 品质对应颜色（供 UI 提示/飘字使用） ---- */
+  Loot.itemNameColor = function (item) {
+    return (item && item._q && item._q.color) || '#c8c8c8';
   };
 
   /* ---- 序列化兼容：读档后重新挂载 _base/_q ---- */

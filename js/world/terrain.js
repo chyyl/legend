@@ -109,9 +109,15 @@
       }
     }
 
-    /* 3) 人工修正：区域中心一律平整（营地/城镇需要可建筑） */
-    if (w > 0.86 && tile !== 'water' && rg.id !== 'bridge') {
-      tile = (rg.id === 'farm') ? 'farmland' : (rg.id === 'snow' ? 'snow' : (rg.theme[0] === 'darkstone' ? 'darkstone' : 'grass'));
+    /* 3) 人工修正：区域核心圈一律平整为可行走地表（营地/城镇需要可建筑、可站立）。
+     *    注意必须覆盖 water/lava/rock_high —— 否则区域中心可能整片成湖或山，
+     *    导致 NPC/传送点/玩家出生点卡死。跨海大桥区域除外（它本就是水+桥）。 */
+    if (w > 0.75 && rg.id !== 'bridge') {
+      tile = (rg.id === 'farm') ? 'farmland'
+           : (rg.id === 'snow') ? 'snow'
+           : (rg.theme[0] === 'darkstone') ? 'darkstone'
+           : (rg.id === 'bay' || rg.id === 'island') ? 'sand'
+           : 'grass';
     }
 
     /* 4) 营地与各区域之间铺土路，跨水自动变桥（保证全图连通） */
@@ -172,6 +178,7 @@
     themeAt: function (tx, ty) { return Config.getRegionAt(tx, ty); },
     randomWalkable: function (rng, tx, ty, tries) {
       tries = tries || 20;
+      rng = Utils.asRng(rng);          // 兼容直接传 Math.random
       for (var i = 0; i < tries; i++) {
         var x = tx + rng.int(-6, 6), y = ty + rng.int(-6, 6);
         if (Terrain.walkable(x, y)) return { x: x, y: y };

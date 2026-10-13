@@ -22,7 +22,7 @@
 
   function Enemy(tplId, x, y, lv, rank, diff, rng) {
     var tpl = Config.ENEMY_TEMPLATES[tplId] || Config.ENEMY_TEMPLATES.slime;
-    rng = rng || Math.random;
+    rng = Utils.asRng(rng || Math.random);   // 兼容裸 Math.random（精英/BOSS 需要 rng.range）
     rank = rank || 'normal';
     lv = Math.max(1, Math.min(Config.PLAYER_MAX_LEVEL, lv | 0));
     diff = (diff == null) ? Config.DEFAULT_DIFFICULTY : diff;

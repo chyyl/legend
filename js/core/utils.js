@@ -31,6 +31,19 @@
     return next;
   };
 
+  /* 随机源兼容包装：允许调用方直接传 Math.random（裸函数），
+   * 自动补齐 range/int/pick/chance，避免 "rng.int is not a function" 这类崩溃。
+   * 放在最底层，terrain/loot 等模块共用同一实现。 */
+  Utils.asRng = function (rng) {
+    if (rng && typeof rng.range === 'function' && typeof rng.int === 'function') return rng;
+    var fn = (typeof rng === 'function') ? rng : Math.random;
+    fn.range = fn.range || function (a, b) { return a + fn() * (b - a); };
+    fn.int = fn.int || function (a, b) { return Math.floor(a + fn() * (b - a + 1)); };
+    fn.pick = fn.pick || function (arr) { return arr[Math.floor(fn() * arr.length) % arr.length]; };
+    fn.chance = fn.chance || function (p) { return fn() < p; };
+    return fn;
+  };
+
   /* 数学工具 */
   Utils.clamp = function (v, a, b) { return v < a ? a : (v > b ? b : v); };
   Utils.lerp = function (a, b, t) { return a + (b - a) * t; };

@@ -20,6 +20,7 @@
   'use strict';
   var L = global.Legend = global.Legend || {};
   var Config = L.Config, Utils = L.Utils, Loot = L.Loot, Quest = L.Quest;
+  var World = L.World;   // worldmap.js 先于本文件加载（见 index.html 顺序注释）
 
   var UI = { game: null, panel: null, _mmTimer: 0 };
   var $ = function (id) { return document.getElementById(id); };
@@ -92,7 +93,10 @@
     /* 消息事件 -> 顶部提示 */
     Utils.bus.on('region_found', function (rg) { UI.toast('发现新区域：' + rg.name + '（' + rg.dir + '）', '#7ee0ff'); });
     Utils.bus.on('region_liberated', function (rg) { UI.toast('★ 区域解放：' + rg.name + '！', '#ffd750'); });
-    Utils.bus.on('levelup', function (lv) { UI.toast('升级！等级达到 Lv' + lv, '#7ee0ff'); });
+    Utils.bus.on('levelup', function (lv) {
+      UI.toast('升级！等级达到 Lv' + lv, '#7ee0ff');
+      if (L.Fx) { L.Fx.flash('#7ee0ff', 0.30, 0.5); L.Fx.shake(3.5, 0.35); }   // 升级演出
+    });
     Utils.bus.on('loot', function (it) { UI.toast('获得 ' + Loot.itemName(it), Loot.itemNameColor(it)); });
     Utils.bus.on('undead', function () { UI.toast('不死金牌触发！无敌 5 秒', '#ffd750'); });
     Utils.bus.on('quest_ready', function (q) { UI.toast('任务可交付：' + q.name + '（找 NPC 领奖）', '#9dff70'); });
@@ -331,6 +335,22 @@
     ctx.beginPath(); ctx.arc(p.x / Config.MAP_SIZE * size, p.y / Config.MAP_SIZE * size, 5, 0, 6.29); ctx.fill();
     ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.stroke();
 
+    /* 区域列表（含探索/解放状态与方位说明） */
+    var rlist = $('region-list');
+    if (rlist) {
+      rlist.innerHTML = '';
+      for (var ri = 0; ri < Config.REGIONS.length; ri++) {
+        var rgr = Config.REGIONS[ri];
+        if (rgr.id === 'wild') continue;
+        var known3 = World.explored[rgr.id];
+        var div = document.createElement('div');
+        div.className = 'region-item' + (World.liberated[rgr.id] ? ' liberated' : (known3 ? '' : ' unknown'));
+        div.textContent = (World.liberated[rgr.id] ? '✓ ' : known3 ? '● ' : '？ ') +
+          rgr.name + '（' + rgr.dir + '）' + (known3 ? '' : ' - 未探索');
+        rlist.appendChild(div);
+      }
+    }
+
     /* 点击传送（仅限已解锁传送点） */
     cv.onclick = function (ev) {
       var rect = cv.getBoundingClientRect();
@@ -369,8 +389,9 @@
     }
   };
 
-  /* ---- HUD 刷新 ---- */
+  /* ---- HUD 刷新（防御：UI 未初始化或无玩家时静默返回） ---- */
   UI.refreshHud = function () {
+    if (!UI.game || !UI.game.player) return;
     var p = UI.game.player;
     $('hud-hp-fill').style.width = Math.max(0, (p.hp / p.maxHp * 100)) + '%';
     $('hud-hp-text').textContent = Math.ceil(p.hp) + '/' + p.maxHp;
@@ -392,6 +413,7 @@
 
   /* ---- HUD 小地图（由 game 循环每 0.2s 调一次） ---- */
   UI.drawHudMinimap = function () {
+    if (!UI.game || !UI.game.player) return;
     var cv = $('hud-minimap');
     var ctx = cv.getContext('2d');
     L.Renderer.drawMinimap(ctx, UI.game, 0, 0, cv.width);
@@ -399,7 +421,9 @@
 
   /* ---- 死亡结算 ---- */
   UI.showDeath = function () {
-    var g = UI.game, p = g.player;
+    var g = UI.game;
+    if (!g || !g.player) return;
+    var p = g.player;
     var box = $('death-panel');
     box.style.display = 'block';
     $('death-stats').innerHTML =

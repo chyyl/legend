@@ -18,6 +18,9 @@
   'use strict';
   var L = global.Legend = global.Legend || {};
   var Config = L.Config, Utils = L.Utils, Terrain = L.Terrain;
+  var World = L.World;   // worldmap.js 先于本文件加载（见 index.html 顺序注释）
+  var Input = L.Input;   // core/input.js 先于本文件加载
+  var Fx = L.Fx;         // world/fx.js 先于本文件加载（氛围/震动/光照）
 
   var Renderer = {
     canvas: null, ctx: null,
@@ -55,8 +58,8 @@
   Renderer.worldToScreen = function (wx, wy) {
     var c = Renderer.camera, t = Config.TILE, z = c.zoom;
     return {
-      x: (wx - c.x) * t * z + Renderer.canvas.width / 2,
-      y: (wy - c.y) * t * z + Renderer.canvas.height / 2
+      x: (wx - c.x) * t * z + Renderer.canvas.width / 2 + (Fx ? Fx.shakeX : 0),
+      y: (wy - c.y) * t * z + Renderer.canvas.height / 2 + (Fx ? Fx.shakeY : 0)
     };
   };
   Renderer.screenToWorld = function (sx, sy) {
@@ -67,9 +70,9 @@
     };
   };
 
-  Renderer.floatText = function (x, y, text, color) {
-    Renderer.floats.push({ x: x, y: y, text: text, color: color || '#fff', t: 1.0 });
-    if (Renderer.floats.length > 80) Renderer.floats.shift();
+  Renderer.floatText = function (x, y, text, color, crit) {
+    Renderer.floats.push({ x: x, y: y, text: text, color: color || '#fff', t: 1.0, crit: !!crit });
+    if (Renderer.floats.length > 90) Renderer.floats.shift();
   };
   Renderer.addSlash = function (x, y, angle, range, color) {
     Renderer.slashes.push({ x: x, y: y, angle: angle, range: range, t: 0.22, color: color || '#fff' });
@@ -81,6 +84,11 @@
     }
     if (Renderer.sparks.length > 300) Renderer.sparks.splice(0, Renderer.sparks.length - 300);
   };
+
+  /* 该格是否为陆地（用于海岸线泡沫判断） */
+  function isLandTile(t) {
+    return t !== 'water' && t !== 'lava' && t !== undefined;
+  }
 
   /* ---- 地形绘制：只画视口内的格子，格子内再画 4×4 像素纹理 ---- */
   function drawTerrain(ctx, game) {
@@ -133,14 +141,63 @@
           ctx.fillStyle = 'rgba(255,200,60,' + (0.10 + lv * 0.22) + ')';
           ctx.fillRect(sx, sy, px, px);
         }
+        /* 水面与陆地交界：画一圈浪花泡沫，让海岸线更自然 */
+        if (tile === 'water' && px >= 8) {
+          var foamA = 0.20 + 0.14 * Math.sin(Renderer.time * 2.2 + tx * 0.7 + ty * 1.1);
+          ctx.fillStyle = 'rgba(230,245,255,' + foamA.toFixed(3) + ')';
+          if (isLandTile(Terrain.tileAt(tx, ty - 1))) ctx.fillRect(sx, sy, px, Math.max(1, px / 7));
+          if (isLandTile(Terrain.tileAt(tx, ty + 1))) ctx.fillRect(sx, sy + px - Math.max(1, px / 7), px, Math.max(1, px / 7));
+          if (isLandTile(Terrain.tileAt(tx - 1, ty))) ctx.fillRect(sx, sy, Math.max(1, px / 7), px);
+          if (isLandTile(Terrain.tileAt(tx + 1, ty))) ctx.fillRect(sx + px - Math.max(1, px / 7), sy, Math.max(1, px / 7), px);
+        }
+
+        /* 草地/农田植被装饰：按坐标哈希稳定生成草簇与野花（近景才画） */
+        if (px >= 12 && (tile === 'grass' || tile === 'flower' || tile === 'farmland')) {
+          var vh = ((tx * 92837111) ^ (ty * 689287499)) >>> 0;
+          if ((vh & 7) === 0) {                       // 1/8 概率长草
+            var gx = sx + ((vh >> 3) & 3) * (px / 4) + px * 0.12;
+            var gy = sy + ((vh >> 5) & 3) * (px / 4) + px * 0.12;
+            var gh = Math.max(2, px * 0.22);
+            var sway = Math.sin(Renderer.time * 1.6 + tx + ty) * (px * 0.03);
+            ctx.fillStyle = tile === 'farmland' ? '#6f6224' : '#2f7a28';
+            ctx.fillRect(gx + sway, gy - gh, Math.max(1, px * 0.07), gh);
+            ctx.fillRect(gx + sway * 1.6 + px * 0.06, gy - gh * 0.8, Math.max(1, px * 0.07), gh * 0.8);
+          }
+          if (tile !== 'farmland' && (vh & 31) === 3) {   // 1/32 概率野花
+            var fx2 = sx + ((vh >> 8) & 3) * (px / 4) + px * 0.2;
+            var fy2 = sy + ((vh >> 10) & 3) * (px / 4) + px * 0.2;
+            var petal = ['#ff9ec4', '#ffe27a', '#c9a0ff', '#ffffff'][(vh >> 12) & 3];
+            ctx.fillStyle = '#2f7a28';
+            ctx.fillRect(fx2, fy2, Math.max(1, px * 0.05), Math.max(2, px * 0.14));
+            ctx.fillStyle = petal;
+            ctx.fillRect(fx2 - Math.max(1, px * 0.05), fy2 - Math.max(1, px * 0.1), Math.max(2, px * 0.15), Math.max(2, px * 0.1));
+          }
+        }
+
         /* 格线（放大时才显示，强化像素网格感） */
         if (px >= 24) {
-          ctx.fillStyle = 'rgba(0,0,0,0.06)';
+          ctx.fillStyle = 'rgba(0,0,0,0.05)';
           ctx.fillRect(sx, sy, px, 1);
           ctx.fillRect(sx, sy, 1, px);
         }
       }
     }
+  }
+
+  /* ---- 地面投影：所有站立实体脚下画椭圆软阴影，强化空间层次 ---- */
+  function drawShadow(ctx, sx, sy, scale, k) {
+    k = k || 1;
+    var rx = scale * 0.30 * k, ry = scale * 0.12 * k;
+    var g = ctx.createRadialGradient(sx, sy, 0, sx, sy, rx);
+    g.addColorStop(0, 'rgba(0,0,0,0.34)');
+    g.addColorStop(0.7, 'rgba(0,0,0,0.16)');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.scale(1, ry / rx);
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(0, 0, rx, 0, 6.29); ctx.fill();
+    ctx.restore();
   }
 
   /* ---- 火柴人绘制：极简线条小人 + 手持武器 ---- */
@@ -234,6 +291,20 @@
     }
     var col = e.hurtFlash > 0 ? '#ff5050' : e.tpl.color;
     var isBoss = e.rank === 'boss';
+    drawShadow(ctx, sx, sy + s * 0.32, s, 1);
+    /* 精英/BOSS：旋转虚线光环，比静态填充更有存在感 */
+    if (e.rank !== 'normal') {
+      var ringR = s * 0.62;
+      var ringColor = isBoss ? 'rgba(255,80,80,0.75)' : 'rgba(120,180,255,0.7)';
+      ctx.strokeStyle = ringColor;
+      ctx.lineWidth = Math.max(2, s * 0.05);
+      ctx.setLineDash([s * 0.16, s * 0.12]);
+      ctx.lineDashOffset = Renderer.time * (isBoss ? -22 : 14);
+      ctx.beginPath();
+      ctx.ellipse(sx, sy + s * 0.30, ringR, ringR * 0.42, 0, 0, 6.29);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
     ctx.save();
     ctx.translate(sx, sy);
     /* 身体（用模板色画个小方块躯干 + 火柴四肢） */
@@ -284,6 +355,7 @@
   /* ---- 宝箱 ---- */
   function drawChest(ctx, c, sx, sy, scale) {
     var s = scale * 0.8;
+    drawShadow(ctx, sx, sy + s * 0.24, s, 0.95);
     if (c.opened) {
       ctx.fillStyle = '#5a4326';
       ctx.fillRect(sx - s * 0.35, sy - s * 0.18, s * 0.7, s * 0.30);
@@ -319,6 +391,7 @@
   /* ---- NPC ---- */
   function drawNPC(ctx, npc, sx, sy, scale) {
     var s = scale * 0.95;
+    drawShadow(ctx, sx, sy + s * 0.40, s, 1);
     var bob = Math.sin(npc.bob) * s * 0.02;
     var cy = sy - s * 0.5 + bob;
     ctx.strokeStyle = '#1a3a5a'; ctx.lineWidth = Math.max(2, s / 10); ctx.lineCap = 'round';
@@ -422,12 +495,15 @@
 
     /* 玩家（本人） */
     var ssp = Renderer.worldToScreen(p.x, p.y);
-    var blink = p.invuln > 0 && Math.floor(Renderer.time * 12) % 2 === 0;
+    drawShadow(ctx, ssp.x, ssp.y + scale * 0.42, scale, p.rollTime > 0 ? 0.7 : 1);
+    var blink = p.invuln > 0 && p.rollTime <= 0 && Math.floor(Renderer.time * 12) % 2 === 0;
     if (!blink) {
       drawStickman(ctx, ssp.x, ssp.y, scale, {
-        color: '#2c3e50', dir: p.dir,
+        color: (p._hurtT > 0) ? '#c0392b' : '#2c3e50',
+        headColor: (p._hurtT > 0) ? '#f4a89a' : '#f0c8a0',
+        dir: p.dir,
         weapon: p.slots.weapon ? p.slots.weapon.type : null,
-        atkAnim: p.atkAnim, moving: !!(game.input.dirX || game.input.dirY),
+        atkAnim: p.atkAnim, moving: !!(Input.dirX || Input.dirY),
         roll: p.rollTime > 0
       });
     }
@@ -474,18 +550,30 @@
       var ft = Renderer.floats[f];
       ft.t -= dt;
       if (ft.t <= 0) { Renderer.floats.splice(f, 1); continue; }
-      ft.y -= dt * 0.8;
+      ft.y -= dt * (ft.crit ? 1.5 : 0.8);        // 暴击飘得更高更快
       var sft = Renderer.worldToScreen(ft.x, ft.y);
       ctx.globalAlpha = Math.min(1, ft.t * 2);
-      ctx.fillStyle = ft.color;
-      ctx.font = 'bold ' + Math.max(12, scale * 0.26) + 'px monospace';
+      var fs = Math.max(12, scale * 0.26) * (ft.crit ? 1.55 : 1);
+      ctx.font = 'bold ' + fs.toFixed(0) + 'px monospace';
       ctx.textAlign = 'center';
+      /* 深色描边保证任何地表上都清晰可读 */
+      ctx.lineWidth = Math.max(3, fs * 0.22);
+      ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+      ctx.lineJoin = 'round';
+      ctx.strokeText(ft.text, sft.x, sft.y);
+      ctx.fillStyle = ft.color;
       ctx.fillText(ft.text, sft.x, sft.y);
       ctx.globalAlpha = 1;
     }
 
     /* 探索迷雾：未探索区域压暗（大地图隐藏感） */
     drawFog(ctx, game);
+
+    /* 光照层：区域环境色 + 昼夜 + 暗角 + 玩家柔光 + 低血红晕 */
+    Fx.applyLighting(ctx, game);
+
+    /* 天气粒子（雪/雨/火星/落叶/尘埃/暗影/薄雾）画在光照之上，才有空气感 */
+    Fx.draw(ctx, game);
 
     /* 交互提示 */
     var hint = game.interactHint();

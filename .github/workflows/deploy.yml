@@ -1,0 +1,45 @@
+# =============================================================================
+# 文件：.github/workflows/deploy.yml
+# 职责：推送到 main 分支时自动把整个站点发布到 GitHub Pages（零成本部署）。
+# 依赖：仓库 Settings -> Pages -> Source 设为 "GitHub Actions"
+# 对外接口：无（CI 配置）
+# 被引用：README.md 第四节部署说明
+# =============================================================================
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          # 项目是纯静态站点，仓库根目录即站点根目录
+          path: .
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
