@@ -6,7 +6,7 @@
  *   因此统一用 URL 的完整 pathname 作为缓存键，不做根路径假设
  */
 
-const CACHE_NAME = 'legend-v0.1.0'
+const CACHE_NAME = 'legend-v0.1.1'
 
 // 依据 Service Worker 自身位置推导基础路径，兼容 GitHub Pages 子路径部署
 const BASE_PATH = (() => {
