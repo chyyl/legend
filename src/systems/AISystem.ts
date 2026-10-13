@@ -1,5 +1,7 @@
 import { World, System, Entity, AIComponent, PositionComponent } from '../ecs/ECS'
 import { MapGenerator } from './MapGenerator'
+import { saveManager } from './SaveManager'
+import { DIFFICULTY } from '../config/GameConfig'
 
 export class AISystem extends System {
   private mapGenerator: MapGenerator
@@ -156,12 +158,22 @@ export class AISystem extends System {
     const targetHealth = target.get('health')
     const attackerStats = attacker.get('stats')
     if (!targetHealth || !attackerStats) return
+    // 无敌帧内不结算伤害
+    if (targetHealth.invulnerable) return
 
     let damage = attackerStats.damage
     if (Math.random() < attackerStats.critChance) {
       damage *= attackerStats.critMultiplier
     }
-    
+
+    // 玩家受击：先减防御，再按难度系数缩放（0 → 0.5倍，0.9 → 0.95倍，2 → 1.5倍）
+    if (target.get('player')) {
+      const targetStats = target.get('stats')
+      damage = Math.max(1, damage - (targetStats?.defense || 0))
+      const difficulty = saveManager.getSettings().gameplay.difficulty ?? DIFFICULTY.default
+      damage = Math.max(1, Math.floor(damage * (0.5 + difficulty * 0.5)))
+    }
+
     targetHealth.hp = Math.max(0, targetHealth.hp - damage)
     targetHealth.lastDamageSource = attacker.id
     targetHealth.invulnerable = true
@@ -200,8 +212,9 @@ export class MovementSystem extends System {
         }
       }
 
-      vel.vx *= Math.pow(vel.drag, delta / 1000)
-      vel.vy *= Math.pow(vel.drag, delta / 1000)
+      // drag 语义：每 60fps 帧的衰减系数（0.95/帧 ≈ 0.046/秒），按实际 delta 归一化
+      vel.vx *= Math.pow(vel.drag, (delta / 1000) * 60)
+      vel.vy *= Math.pow(vel.drag, (delta / 1000) * 60)
 
       if (Math.abs(vel.vx) < 0.1) vel.vx = 0
       if (Math.abs(vel.vy) < 0.1) vel.vy = 0
@@ -212,10 +225,16 @@ export class MovementSystem extends System {
 export class InputSystem extends System {
   private keys: Map<string, boolean> = new Map()
   private touchState: { active: boolean, x: number, y: number, id: number } = { active: false, x: 0, y: 0, id: -1 }
+  private mouseAttack = false
+  private touchAttack = false
 
   constructor() {
     super()
     this.setupListeners()
+  }
+
+  setTouchAttack(v: boolean) {
+    this.touchAttack = v
   }
 
   private setupListeners() {
@@ -228,12 +247,21 @@ export class InputSystem extends System {
       canvas.addEventListener('touchstart', this.onTouchStart.bind(this), { passive: false })
       canvas.addEventListener('touchmove', this.onTouchMove.bind(this), { passive: false })
       canvas.addEventListener('touchend', this.onTouchEnd.bind(this))
+      canvas.addEventListener('contextmenu', e => e.preventDefault())
+      canvas.addEventListener('pointerdown', (e: PointerEvent) => {
+        if (e.button === 2) this.mouseAttack = true
+      })
+      window.addEventListener('pointerup', (e: PointerEvent) => {
+        if (e.button === 2) this.mouseAttack = false
+      })
     }
   }
 
   private onTouchStart(e: TouchEvent) {
     e.preventDefault()
     const touch = e.changedTouches[0]
+    // 右下角为攻击按钮区域，不作为移动摇杆
+    if (touch.clientX > window.innerWidth * 0.65 && touch.clientY > window.innerHeight * 0.65) return
     this.touchState = { active: true, x: touch.clientX, y: touch.clientY, id: touch.identifier }
   }
 
@@ -265,7 +293,7 @@ export class InputSystem extends System {
       input.down = this.keys.get('KeyS') || this.keys.get('ArrowDown') || false
       input.left = this.keys.get('KeyA') || this.keys.get('ArrowLeft') || false
       input.right = this.keys.get('KeyD') || this.keys.get('ArrowRight') || false
-      input.attack = this.keys.get('Space') || this.keys.get('ShiftLeft') || false
+      input.attack = this.keys.get('Space') || this.keys.get('ShiftLeft') || this.mouseAttack || this.touchAttack || false
       input.interact = this.keys.get('KeyE') || this.keys.get('Enter') || false
       input.dodge = this.keys.get('ShiftLeft') || this.keys.get('ControlLeft') || false
       input.menu = this.keys.get('Escape') || this.keys.get('Tab') || false

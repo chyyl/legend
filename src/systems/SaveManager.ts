@@ -138,7 +138,7 @@ class SaveManager {
       version: '0.1.0',
       timestamp: Date.now(),
       player: {
-        x: 1550, y: 1550,
+        x: 24800, y: 24800,
         level: 1, exp: 0, gold: 0,
         hp: 100, maxHp: 100,
         attributes: { strength: 5, agility: 5, intelligence: 5, vitality: 5 },

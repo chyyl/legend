@@ -1,5 +1,5 @@
 import { Scene } from 'phaser'
-import { REGIONS, WEAPON_TYPES, WEAPON_CONFIG, EQUIPMENT_SLOTS, BONDS } from '../config/GameConfig'
+import { WEAPON_TYPES, WEAPON_CONFIG } from '../config/GameConfig'
 
 export class PreloadScene extends Scene {
   constructor() {
@@ -7,23 +7,17 @@ export class PreloadScene extends Scene {
   }
 
   preload() {
-    this.load.setPath('assets')
-    
-    // Audio
-    this.load.audio('bgm_main', 'audio/bgm_main.ogg')
-    this.load.audio('bgm_battle', 'audio/bgm_battle.ogg')
-    this.load.audio('sfx_hit', 'audio/hit.ogg')
-    this.load.audio('sfx_swing', 'audio/swing.ogg')
-    this.load.audio('sfx_levelup', 'audio/levelup.ogg')
-    this.load.audio('sfx_pickup', 'audio/pickup.ogg')
-    this.load.audio('sfx_death', 'audio/death.ogg')
-    
-    // Font
-    this.load.bitmapFont('pixel_font', 'fonts/pixel.png', 'fonts/pixel.xml')
-    
-    this.load.on('complete', () => {
-      this.scene.start('MainMenu')
-    })
+    // 真实美术/音频资源尚未制作（占位贴图由 BootScene 程序生成），暂不加载外部文件以避免 404。
+    // 资源就绪后放开以下加载即可：
+    // this.load.setPath('assets')
+    // this.load.audio('bgm_main', 'audio/bgm_main.ogg')
+    // this.load.audio('bgm_battle', 'audio/bgm_battle.ogg')
+    // this.load.audio('sfx_hit', 'audio/hit.ogg')
+    // this.load.audio('sfx_swing', 'audio/swing.ogg')
+    // this.load.audio('sfx_levelup', 'audio/levelup.ogg')
+    // this.load.audio('sfx_pickup', 'audio/pickup.ogg')
+    // this.load.audio('sfx_death', 'audio/death.ogg')
+    // this.load.bitmapFont('pixel_font', 'fonts/pixel.png', 'fonts/pixel.xml')
   }
 
   create() {

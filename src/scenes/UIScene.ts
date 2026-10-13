@@ -190,7 +190,7 @@ export class UIScene extends Scene {
 
       c.add([g, label])
       c.setSize(tabW - 4, h)
-      c.setInteractive(new Geom.Rectangle(-tabW / 2 + 2, -h / 2, tabW - 4, h), Geom.Rectangle.Contains)
+      c.setInteractive(new Geom.Rectangle(0, 0, tabW - 4, h), Geom.Rectangle.Contains)
       c.on('pointerover', () => {
         if (!active) label.setColor('#ffcc00')
         draw(true)
@@ -231,7 +231,7 @@ export class UIScene extends Scene {
     c.add([g, label])
     c.setSize(size, size)
     c.setDepth(Z_LAYERS.ui_overlay)
-    c.setInteractive(new Geom.Rectangle(-size / 2, -size / 2, size, size), Geom.Rectangle.Contains)
+    c.setInteractive(new Geom.Rectangle(0, 0, size, size), Geom.Rectangle.Contains)
     c.on('pointerover', () => {
       label.setColor('#ffcc00')
       draw(true)
@@ -398,7 +398,7 @@ export class UIScene extends Scene {
 
     c.add([g, label])
     c.setSize(w, h)
-    c.setInteractive(new Geom.Rectangle(-w / 2, -h / 2, w, h), Geom.Rectangle.Contains)
+    c.setInteractive(new Geom.Rectangle(0, 0, w, h), Geom.Rectangle.Contains)
     c.on('pointerover', () => {
       label.setColor('#ffcc00')
       draw(true)
@@ -541,7 +541,7 @@ export class UIScene extends Scene {
     }
 
     c.setSize(cell - 4, cell - 4)
-    c.setInteractive(new Geom.Rectangle(-cell / 2 + 2, -cell / 2 + 2, cell - 4, cell - 4), Geom.Rectangle.Contains)
+    c.setInteractive(new Geom.Rectangle(0, 0, cell - 4, cell - 4), Geom.Rectangle.Contains)
     c.on('pointerover', () => { if (!selected) g.alpha = 0.85 })
     c.on('pointerout', () => { g.alpha = 1 })
     c.on('pointerdown', onClick)
@@ -917,7 +917,7 @@ export class UIScene extends Scene {
       }).setOrigin(0.5, 0.5)
       c.add([g, plus])
       c.setSize(btnSize, btnSize)
-      c.setInteractive(new Geom.Rectangle(-btnSize / 2, -btnSize / 2, btnSize, btnSize), Geom.Rectangle.Contains)
+      c.setInteractive(new Geom.Rectangle(0, 0, btnSize, btnSize), Geom.Rectangle.Contains)
       if (canAdd) {
         c.on('pointerover', () => { plus.setColor('#ffcc00'); draw(true) })
         c.on('pointerout', () => { plus.setColor('#ffffff'); draw(false) })
@@ -1019,8 +1019,8 @@ export class UIScene extends Scene {
     // player position marker (bright dot)
     const pos = this.getPlayerPosition()
     if (pos) {
-      const px = mapX + pos.x * TILE_SIZE * scale
-      const py = y + pos.y * TILE_SIZE * scale
+      const px = mapX + pos.x * scale
+      const py = y + pos.y * scale
       const dot = this.add.graphics()
       dot.fillStyle(0xffff00, 0.35)
       dot.fillCircle(px, py, 7)
@@ -1094,7 +1094,7 @@ export class UIScene extends Scene {
       }).setOrigin(0.5, 0.5)
       c.add([g, t])
       c.setSize(44, 44)
-      c.setInteractive(new Geom.Rectangle(-22, -22, 44, 44), Geom.Rectangle.Contains)
+      c.setInteractive(new Geom.Rectangle(0, 0, 44, 44), Geom.Rectangle.Contains)
       c.on('pointerover', () => { t.setColor('#ffcc00'); draw(true) })
       c.on('pointerout', () => { t.setColor('#ffffff'); draw(false) })
       c.on('pointerdown', () => {

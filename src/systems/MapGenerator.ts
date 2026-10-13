@@ -31,6 +31,9 @@ const TILE_MAP: Record<TileType, number> = {
   farmland: 8, bridge: 9, volcanic: 10, castle_floor: 11
 }
 
+const REVERSE_TILE_MAP: Record<number, TileType> = {}
+Object.entries(TILE_MAP).forEach(([k, v]) => { REVERSE_TILE_MAP[v] = k as TileType })
+
 const BIOME_TILES: Record<string, TileType[]> = {
   plains: ['grass', 'dirt'],
   mountains: ['mountain', 'stone', 'grass'],
@@ -257,15 +260,19 @@ export class MapGenerator {
       })
     }
 
-    if (this.random.next() < 0.005) {
-      const enemyTypes = ['normal', 'normal', 'normal', 'elite']
-      const type = enemyTypes[this.random.nextInt(0, enemyTypes.length - 1)]
-      entities.push({
-        type: 'enemy_spawner',
-        x: chunkX * CHUNK_SIZE * TILE_SIZE + this.random.nextInt(0, CHUNK_SIZE * TILE_SIZE),
-        y: chunkY * CHUNK_SIZE * TILE_SIZE + this.random.nextInt(0, CHUNK_SIZE * TILE_SIZE),
-        properties: { enemyType: type, level: regionData.level, biome }
-      })
+    // 营地为安全区不刷怪；其他区域每个区块 2~4 个刷怪点
+    if (region !== 'camp') {
+      const spawnerCount = 2 + this.random.nextInt(0, 2)
+      for (let i = 0; i < spawnerCount; i++) {
+        const roll = this.random.next()
+        const type = roll < 0.75 ? 'normal' : roll < 0.95 ? 'elite' : 'boss'
+        entities.push({
+          type: 'enemy_spawner',
+          x: chunkX * CHUNK_SIZE * TILE_SIZE + this.random.nextInt(0, CHUNK_SIZE * TILE_SIZE),
+          y: chunkY * CHUNK_SIZE * TILE_SIZE + this.random.nextInt(0, CHUNK_SIZE * TILE_SIZE),
+          properties: { enemyType: type, level: regionData.level, biome }
+        })
+      }
     }
   }
 
@@ -326,10 +333,10 @@ export class MapGenerator {
     const chunk = this.getChunk(chunkX, chunkY)
     let localX = tileX % CHUNK_SIZE
     let localY = tileY % CHUNK_SIZE
+    if (localX < 0) localX += CHUNK_SIZE
+    if (localY < 0) localY += CHUNK_SIZE
     const tileIndex = chunk.tiles[localY * CHUNK_SIZE + localX]
-    const reverseMap: Record<number, TileType> = {}
-    Object.entries(TILE_MAP).forEach(([k, v]) => { reverseMap[v] = k as TileType })
-    return reverseMap[tileIndex] || 'grass'
+    return REVERSE_TILE_MAP[tileIndex] || 'grass'
   }
 }
 

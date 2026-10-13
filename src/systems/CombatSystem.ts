@@ -5,7 +5,7 @@ import { saveManager } from './SaveManager'
 
 export class CombatSystem extends System {
   private mapGenerator: MapGenerator
-  private damageNumbers: Map<string, {x: number, y: number, value: number, time: number, crit: boolean}> = new Map()
+  private damageNumbers: Map<string, {x: number, y: number, value: number, time: number, crit: boolean, text?: string}> = new Map()
 
   constructor(mapGenerator: MapGenerator) {
     super()
@@ -166,7 +166,8 @@ export class CombatSystem extends System {
       y: pos.y - 20,
       value: typeof value === 'number' ? value : 0,
       time: 1000,
-      crit
+      crit,
+      text: typeof value === 'string' ? value : undefined
     })
   }
 

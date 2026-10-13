@@ -66,7 +66,7 @@ async function init() {
   game.scene.add('UI', UIScene)
 
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js').catch(() => {})
+    navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {})
   }
 }
 

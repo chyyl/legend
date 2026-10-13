@@ -6,15 +6,15 @@ export class BootScene extends Scene {
   }
 
   preload() {
-    this.load.setPath('assets')
-    this.load.image('loading_bg', 'ui/loading_bg.png')
-    this.load.image('loading_bar', 'ui/loading_bar.png')
-    this.load.image('logo', 'ui/logo.png')
+    // 占位资源由 generatePlaceholderAssets() 程序生成，不加载外部文件以避免 404
   }
 
   create() {
     this.cameras.main.setBackgroundColor('#1a1a2e')
-    
+
+    // 先生成占位贴图，再使用（logo 等）
+    this.generatePlaceholderAssets()
+
     const logo = this.add.image(this.scale.width / 2, this.scale.height / 2 - 50, 'logo')
     logo.setScale(0.5)
     
@@ -25,18 +25,7 @@ export class BootScene extends Scene {
     const bar = this.add.graphics()
     bar.fillStyle(0xff9900, 1)
     bar.fillRoundedRect(this.scale.width / 2 - 148, this.scale.height / 2 + 52, 0, 16, 8)
-    
-    this.load.on('progress', (value: number) => {
-      bar.clear()
-      bar.fillStyle(0xff9900, 1)
-      bar.fillRoundedRect(this.scale.width / 2 - 148, this.scale.height / 2 + 52, 296 * value, 16, 8)
-    })
-    
-    this.load.on('complete', () => {
-      this.scene.start('Preload')
-    })
-    
-    this.generatePlaceholderAssets()
+
     this.scene.start('Preload')
   }
 

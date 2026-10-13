@@ -1,2 +1,4 @@
 nul
 node_modules
+dist
+.playwright-mcp

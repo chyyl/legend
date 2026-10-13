@@ -1,6 +1,8 @@
 import { defineConfig } from 'vite'
 
-export default defineConfig({
+// GitHub Pages 项目页部署在 /legend/ 子路径下；本地 dev 仍用根路径
+export default defineConfig(({ command }) => ({
+  base: command === 'serve' ? '/' : '/legend/',
   root: '.',
   publicDir: 'public',
   build: {
@@ -28,4 +30,4 @@ export default defineConfig({
       '@': '/src'
     }
   }
-})
+}))

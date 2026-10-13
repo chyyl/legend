@@ -82,7 +82,8 @@ export class MainMenuScene extends Scene {
       
       container.add([bg, text])
       container.setSize(240, 50)
-      container.setInteractive(new Phaser.Geom.Rectangle(-120, -25, 240, 50), Phaser.Geom.Rectangle.Contains)
+      // hitArea 采用左上原点约定（pointWithinHitArea 会先加 displayOrigin）
+      container.setInteractive(new Phaser.Geom.Rectangle(0, 0, 240, 50), Phaser.Geom.Rectangle.Contains)
       
       container.on('pointerover', () => {
         bg.clear()
@@ -160,7 +161,7 @@ export class MainMenuScene extends Scene {
       }
       
       container.setSize(360, 80)
-      container.setInteractive(new Phaser.Geom.Rectangle(-180, -40, 360, 80), Phaser.Geom.Rectangle.Contains)
+      container.setInteractive(new Phaser.Geom.Rectangle(0, 0, 360, 80), Phaser.Geom.Rectangle.Contains)
       container.on('pointerdown', () => this.startGame(i))
       container.on('pointerover', () => {
         this.selectedSave = i
@@ -376,7 +377,7 @@ export class MainMenuScene extends Scene {
     
     container.add([bg, btnText])
     container.setSize(200, 40)
-    container.setInteractive(new Phaser.Geom.Rectangle(-100, -20, 200, 40), Phaser.Geom.Rectangle.Contains)
+    container.setInteractive(new Phaser.Geom.Rectangle(0, 0, 200, 40), Phaser.Geom.Rectangle.Contains)
     
     container.on('pointerover', () => {
       bg.clear()
