@@ -337,7 +337,8 @@
       var cx = ev.clientX - rect.left, cy = ev.clientY - rect.top;
       for (var h = 0; h < UI._tpHits.length; h++) {
         var hit = UI._tpHits[h];
-                  if (!hit.tp.unlocked) { UI.toast('该传送点尚未解锁（先去探索该区域）', '#ff9aa2'); return; }
+        if (Utils.dist(cx, cy, hit.x, hit.y) < 9) {
+          if (!hit.tp.unlocked) { UI.toast('该传送点尚未解锁（先去探索该区域）', '#ff9aa2'); return; }
           game.player.x = hit.tp.x; game.player.y = hit.tp.y;
           UI.toast('传送到：' + hit.tp.name, '#5ad0ff');
           UI.closeAll();
