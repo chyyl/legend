@@ -397,9 +397,10 @@
     if (this.state !== 'play') return;
     var p = this.player;
 
-    /* 输入方向与瞄准（玩家屏幕位置即画布中心；无画布时兜底） */
-    var cvw = Renderer.canvas ? Renderer.canvas.width / 2 : 400;
-    var cvh = Renderer.canvas ? Renderer.canvas.height / 2 : 225;
+    /* 输入方向与瞄准：玩家屏幕位置 = 视口逻辑中心（CSS 像素），
+     * 与鼠标/触摸坐标同一空间——修复了旧版缓冲/CSS 混用导致的瞄准偏移 */
+    var cvw = Renderer.vw() / 2;
+    var cvh = Renderer.vh() / 2;
     Input.update(cvw, cvh);
 
     /* UI 面板开关快捷键 */

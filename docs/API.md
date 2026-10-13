@@ -75,9 +75,13 @@ game          ► 主控（唯一同时认识所有模块的胶水层）
 | `aimAngle` | 瞄准弧度 |
 | `mouseDown` | 鼠标左键按住（连发依据） |
 | `consumePress(key)` | 读取并清除一次性按键 |
+| `press(key)` | 外部注入一次性按键（触屏动作按钮用），key 同上表 |
 | `enabled` | 全局开关（打开 UI 面板时置 false） |
 
 **`consumePress` 可用 key**：`attack` `interact`(E/F) `inv`(I/B) `map`(M) `roll`(空格) `potion`(Q) `esc`
+
+**坐标空间**：`mouseX/mouseY`、`aimAngle` 相关计算均为 **视口 CSS 像素**，与
+`Renderer.vw()/vh()` 的逻辑空间一致（渲染层的 base transform 负责放大到缓冲分辨率）。
 
 ---
 
@@ -210,7 +214,7 @@ game          ► 主控（唯一同时认识所有模块的胶水层）
 | `update(dt, game)` | 每帧推进：昼夜循环、震动衰减、天气粒子生成与移动 |
 | `draw(ctx, game)` | 绘制天气粒子 + 全屏闪光（画在光照层之上） |
 | `applyLighting(ctx, game)` | 区域环境色 + 昼夜暗调 + 暗角 + 玩家柔光 + 低血红晕 + 受击红闪 |
-| `shake(mag, dur)` | 屏幕震动（`shakeX/shakeY` 会被 `worldToScreen` 自动叠加） |
+| `shake(mag, dur)` | 屏幕震动（`mag` 按旧 1/2 分辨率标定、内部 ×2；`shakeX/shakeY` 输出 CSS 像素并被 `worldToScreen` 自动叠加） |
 | `flash(color, alpha, dur)` | 全屏闪光（升级/解放/BOSS 登场） |
 | `hurt(player, amount)` | 玩家受击红闪计时 |
 | `dayPhase` | 昼夜相位 0~1（约 5 分钟一循环） |
@@ -228,11 +232,18 @@ game          ► 主控（唯一同时认识所有模块的胶水层）
 | 成员 | 说明 |
 |---|---|
 | `attach(canvas)` | 绑定画布 |
-| `camera` | `{x, y, zoom}` |
+| `setViewport(w, h)` | 设置视口逻辑尺寸（CSS 像素）；宽度变化时自动 `fitZoom`（index.html 的 resize 调用） |
+| `fitZoom()` | 按视口宽度适配缩放：任何设备都显示约 10 格宽（手机不再只有 3 格视野） |
+| `vw()` / `vh()` | 视口逻辑宽高（CSS 像素；未初始化时退化为画布宽高的一半） |
+| `camera` | `{x, y, zoom}`（`zoom` 单位：CSS 像素/格 ÷ TILE；桌面 ≈4.0、手机 ≈1.2） |
 | `worldToScreen(wx,wy)` / `screenToWorld(sx,sy)` | 坐标换算 |
 | `draw(game, dt)` | 每帧绘制入口 |
 | `drawMinimap(ctx, game, x, y, size)` | 在指定位置画小地图 |
 | `floatText(x,y,text,color)` / `addSlash` / `addSparks` | 飘字/挥砍弧/粒子 |
+
+**坐标空间**：`draw()` 开头用 `setTransform(缓冲宽/逻辑宽, …)` 建立基础变换，
+此后**全部绘制与 `worldToScreen` 输出均为视口 CSS 像素**——与鼠标/触摸坐标天然同空间
+（瞄准所见即所得），清晰度只由缓冲分辨率决定（index.html 按 `DPR/2` 计算，与视野解耦）。
 
 ---
 

@@ -7,7 +7,7 @@
  * 版本号变更 v1 -> v2 即触发更新
  * =============================================================================
  */
-var CACHE = 'legend-v2';   // 每次改动静态资源后递增版本号，强制客户端更新缓存
+var CACHE = 'legend-v3';   // 每次改动静态资源后递增版本号，强制客户端更新缓存
 var ASSETS = [
   './', './index.html', './manifest.json', './css/style.css',
   './js/data/config.js', './js/core/utils.js', './js/core/input.js',

@@ -9,6 +9,7 @@
  *   - mouseX / mouseY / mouseDown          鼠标画布坐标与按下状态
  *   - aimAngle                             当前瞄准弧度（以玩家为原点）
  *   - consumePress(key)                    读取并清除一次性按键（'attack'/'interact'/'inv'/'map'/'roll'）
+ *   - press(key)                            外部注入一次性按键（触屏动作按钮用）
  *   - touchMove(dx, dy)                    虚拟摇杆写入（触屏）
  *   - enabled                              全局开关（UI 打开时暂停游戏输入）
  * 被引用：game.js / player.js
@@ -129,6 +130,8 @@
     if (Input._press[key]) { Input._press[key] = false; return true; }
     return false;
   };
+  /* 供触屏动作按钮（HUD 右下角）注入一次性按键，语义与键盘一致 */
+  Input.press = function (key) { Input._press[key] = true; };
   Input.clearPresses = function () { Input._press = {}; };
   Input.keyDown = function (k) { return !!Input._keys[k]; };
 

@@ -11,9 +11,9 @@
  *   - update(dt, game)              每帧推进（震动衰减、粒子生成与移动）
  *   - draw(ctx, game)               绘制天气粒子（在光照之上）
  *   - applyLighting(ctx, game)      绘制环境色/昼夜/暗角/玩家光/低血红晕
- *   - shake(mag, dur)               屏幕震动
+ *   - shake(mag, dur)               屏幕震动（mag 按旧 1/2 分辨率标定，内部 ×2 输出 CSS 像素）
  *   - flash(color, alpha, dur)      全屏闪光（升级/BOSS登场）
- *   - shakeX / shakeY               当前震动偏移（renderer 的 worldToScreen 会叠加）
+ *   - shakeX / shakeY               当前震动偏移（CSS 像素，renderer 的 worldToScreen 会叠加）
  *   - dayPhase                      昼夜相位 0~1（0=清晨 0.25=正午 0.5=黄昏 0.75=深夜）
  * 被引用：renderer.js（draw 中调用）、game.js（受击/爆炸时调用 shake/flash）
  * =============================================================================
@@ -53,6 +53,9 @@
   };
 
   var MAX_PARTS = 200;
+  /* 单位换算：天气粒子/震动的数值按旧“1/2 分辨率画布”标定（1 旧单位 = 2 CSS 像素），
+   * 渲染切换到 CSS 像素空间后统一 ×PX，保证观感与旧版完全一致 */
+  var PX = 2;
 
   Fx.init = function () {
     Fx._parts.length = 0;
@@ -86,10 +89,9 @@
     return MOOD[rg.id] || MOOD_FALLBACK;
   }
 
-  /* ---- 生成一个天气粒子（屏幕空间） ---- */
-  function spawnPart(kind, cv) {
+  /* ---- 生成一个天气粒子（屏幕空间；内部沿用旧 1/2 分辨率单位，绘制时 ×PX） ---- */
+  function spawnPart(kind, W, H) {
     var p = { kind: kind, x: 0, y: 0, vx: 0, vy: 0, life: 0, max: 1, size: 1, ph: Math.random() * 6.28 };
-    var W = cv.width, H = cv.height;
     switch (kind) {
       case 'snow':
         p.x = Math.random() * W; p.y = -4;
@@ -133,11 +135,11 @@
     /* 昼夜循环：约 5 分钟一整天，画面缓慢从清晨->正午->黄昏->深夜 */
     Fx.dayPhase = (Fx.dayPhase + dt / 300) % 1;
 
-    /* 震动衰减（带轻微随机抖动） */
+    /* 震动衰减（带轻微随机抖动）；mag 为旧单位，×PX 换算成 CSS 像素偏移 */
     if (Fx._shakeT > 0) {
       Fx._shakeT -= dt;
       var k = Math.max(0, Fx._shakeT / Fx._shakeDur);
-      var mag = Fx._shakeMag * k * k;                 // 二次衰减，收尾干净
+      var mag = Fx._shakeMag * k * k * PX;             // 二次衰减，收尾干净
       var a = Math.random() * Math.PI * 2;
       Fx.shakeX = Math.cos(a) * mag;
       Fx.shakeY = Math.sin(a) * mag;
@@ -151,11 +153,13 @@
     if (!game || !game.player) return;
     var cv = L.Renderer && L.Renderer.canvas;
     if (!cv) return;
+    /* 粒子活动范围用旧单位（vw/PX），与 spawnPart 数值标定一致 */
+    var W = L.Renderer.vw() / PX, H = L.Renderer.vh() / PX;
     var mood = moodOf(game);
     Fx._rateCarry += mood.rate * dt;
     while (Fx._rateCarry >= 1 && Fx._parts.length < MAX_PARTS) {
       Fx._rateCarry -= 1;
-      var np = spawnPart(mood.weather, cv);
+      var np = spawnPart(mood.weather, W, H);
       if (np) Fx._parts.push(np);
     }
     if (Fx._rateCarry > 4) Fx._rateCarry = 4;
@@ -167,7 +171,7 @@
       p.x += p.vx * dt;
       p.y += p.vy * dt;
       if (p.kind === 'snow' || p.kind === 'leaf') p.x += Math.sin(Fx._t * 2 + p.ph) * 0.35;  // 飘摆
-      if (p.life <= 0 || p.y > cv.height + 30 || p.y < -30 || p.x < -60 || p.x > cv.width + 60) {
+      if (p.life <= 0 || p.y > H + 30 || p.y < -30 || p.x < -60 || p.x > W + 60) {
         Fx._parts.splice(i, 1);
       }
     }
@@ -175,9 +179,11 @@
 
   /* ---- 绘制天气粒子（应在光照层之上，才有"空气中"的层次感） ---- */
   Fx.draw = function (ctx, game) {
-    if (!Fx._parts.length) return;
-    var W = ctx.canvas.width, H = ctx.canvas.height;
+    /* 基础变换位于 CSS 空间，此处 ×PX 把旧单位粒子换算成 CSS 像素 */
+    var R = L.Renderer;
+    var W = R && R.vw ? R.vw() / PX : 640, H = R && R.vh ? R.vh() / PX : 360;
     ctx.save();
+    ctx.scale(PX, PX);
     for (var i = 0; i < Fx._parts.length; i++) {
       var p = Fx._parts[i];
       var a = Utils.clamp(Math.min(1, p.life / 0.8), 0, 1);   // 淡入淡出
@@ -231,7 +237,9 @@
 
   /* ---- 光照层：区域环境色 + 昼夜 + 暗角 + 玩家柔光 + 低血红晕 ---- */
   Fx.applyLighting = function (ctx, game) {
-    var W = ctx.canvas.width, H = ctx.canvas.height;
+    /* 全部为 W/H 比例运算，直接用 CSS 逻辑尺寸即可与视口自适应 */
+    var R = L.Renderer;
+    var W = R && R.vw ? R.vw() : ctx.canvas.width, H = R && R.vh ? R.vh() : ctx.canvas.height;
     var p = game.player;
     if (!p) return;
     var cx = W / 2, cy = H / 2;

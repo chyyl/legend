@@ -6,12 +6,19 @@
  * 依赖：js/data/config.js、js/world/terrain.js、js/core/utils.js
  * 对外接口（Legend.Renderer）：
  *   - attach(canvas)                 绑定画布
- *   - camera                         {x, y, zoom}（世界坐标为中心）
- *   - worldToScreen(wx, wy)          世界格坐标 -> 画布像素
+ *   - setViewport(w, h)              设置视口逻辑尺寸（CSS 像素，index.html 的 resize 调用）
+ *   - fitZoom()                      按视口宽度自动适配缩放（手机约 12 格宽、宽屏 10 格宽）
+ *   - vw() / vh()                    视口逻辑宽高（CSS 像素；未初始化时退化为画布一半）
+ *   - camera                         {x, y, zoom}（世界坐标为中心；zoom 单位 = CSS 像素/格 ÷ TILE）
+ *   - worldToScreen(wx, wy)          世界格坐标 -> 视口 CSS 像素（与鼠标坐标同空间，瞄准所见即所得）
  *   - draw(game, dt)                 每帧绘制入口
  *   - drawMinimap(ctx2, game, x, y, size)  在指定位置画小地图
  *   - floatText(x, y, text, color)   飘字（伤害数字/提示）
- * 被引用：game.js / ui.js
+ * 坐标空间说明：所有绘制在“CSS 像素”逻辑空间完成，draw() 开头用
+ *   setTransform(backing/logical) 一次性放大到设备缓冲分辨率，因此：
+ *   ①清晰度只由缓冲分辨率决定（index.html 按 DPR 计算），与视野解耦；
+ *   ②输入（鼠标/触摸为 CSS px）与渲染天然同空间。
+ * 被引用：game.js / ui.js / fx.js
  * =============================================================================
  */
 (function (global) {
@@ -24,12 +31,32 @@
 
   var Renderer = {
     canvas: null, ctx: null,
-    camera: { x: 1400, y: 1400, zoom: 2.0 },
+    cssW: 0, cssH: 0,  // 视口逻辑尺寸（CSS 像素），由 index.html 的 resize -> setViewport 写入
+    camera: { x: 1400, y: 1400, zoom: 4.0 },   // zoom 单位：CSS 像素/格 ÷ TILE（4.0 = 桌面端原观感 128 CSS px/格）
     floats: [],        // 飘字
     slashes: [],       // 挥砍弧
     sparks: [],        // 粒子
     time: 0
   };
+
+  /* ---- 视口与缩放适配（手机/桌面同一套逻辑：始终显示约 10 格宽） ---- */
+  Renderer.setViewport = function (w, h) {
+    var prevW = Renderer.cssW;
+    Renderer.cssW = w; Renderer.cssH = h;
+    /* 仅视口宽度变化时重新适配（旋转/分屏）；高度变化（手机地址栏收起）保留用户手动缩放 */
+    if (w && (prevW !== w || !Renderer._zoomInited)) {
+      Renderer.fitZoom();
+      Renderer._zoomInited = true;
+    }
+  };
+  Renderer.fitZoom = function () {
+    var w = Renderer.vw();
+    if (!w) return;
+    /* 10 格宽 = 桌面端旧观感；手机由此从 3 格视野提升到 10 格 */
+    Renderer.camera.zoom = Utils.clamp(w / (10 * Config.TILE), 0.5, 8);
+  };
+  Renderer.vw = function () { return Renderer.cssW || (Renderer.canvas ? Renderer.canvas.width / 2 : 640); };
+  Renderer.vh = function () { return Renderer.cssH || (Renderer.canvas ? Renderer.canvas.height / 2 : 360); };
 
   /* 地形配色（像素风 4 色阶） */
   var PAL = {
@@ -58,15 +85,15 @@
   Renderer.worldToScreen = function (wx, wy) {
     var c = Renderer.camera, t = Config.TILE, z = c.zoom;
     return {
-      x: (wx - c.x) * t * z + Renderer.canvas.width / 2 + (Fx ? Fx.shakeX : 0),
-      y: (wy - c.y) * t * z + Renderer.canvas.height / 2 + (Fx ? Fx.shakeY : 0)
+      x: (wx - c.x) * t * z + Renderer.vw() / 2 + (Fx ? Fx.shakeX : 0),
+      y: (wy - c.y) * t * z + Renderer.vh() / 2 + (Fx ? Fx.shakeY : 0)
     };
   };
   Renderer.screenToWorld = function (sx, sy) {
     var c = Renderer.camera, t = Config.TILE, z = c.zoom;
     return {
-      x: (sx - Renderer.canvas.width / 2) / (t * z) + c.x,
-      y: (sy - Renderer.canvas.height / 2) / (t * z) + c.y
+      x: (sx - Renderer.vw() / 2) / (t * z) + c.x,
+      y: (sy - Renderer.vh() / 2) / (t * z) + c.y
     };
   };
 
@@ -93,7 +120,7 @@
   /* ---- 地形绘制：只画视口内的格子，格子内再画 4×4 像素纹理 ---- */
   function drawTerrain(ctx, game) {
     var c = Renderer.camera, t = Config.TILE, z = c.zoom;
-    var W = Renderer.canvas.width, H = Renderer.canvas.height;
+    var W = Renderer.vw(), H = Renderer.vh();
     var halfW = W / (2 * t * z), halfH = H / (2 * t * z);
     var x0 = Math.floor(c.x - halfW) - 1, x1 = Math.ceil(c.x + halfW) + 1;
     var y0 = Math.floor(c.y - halfH) - 1, y1 = Math.ceil(c.y + halfH) + 1;
@@ -420,8 +447,12 @@
     Renderer.camera.x += (p.x - Renderer.camera.x) * Math.min(1, dt * 8);
     Renderer.camera.y += (p.y - Renderer.camera.y) * Math.min(1, dt * 8);
 
+    /* 基础变换：全部绘制在“CSS 像素”逻辑空间完成，一次性放大到缓冲分辨率。
+     * s = 缓冲宽/逻辑宽 = DPR/2（1 游戏像素恒等于 2 物理像素，清晰且有像素感） */
+    var VW = Renderer.vw(), VH = Renderer.vh();
+    ctx.setTransform(cv.width / VW, 0, 0, cv.height / VH, 0, 0);
     ctx.fillStyle = '#0d1420';
-    ctx.fillRect(0, 0, cv.width, cv.height);
+    ctx.fillRect(0, 0, VW, VH);
 
     drawTerrain(ctx, game);
 
@@ -431,21 +462,21 @@
     for (var i = 0; i < World.chests.length; i++) {
       var c = World.chests[i];
       var sp = Renderer.worldToScreen(c.x, c.y);
-      if (sp.x < -50 || sp.y < -50 || sp.x > cv.width + 50 || sp.y > cv.height + 50) continue;
+      if (sp.x < -50 || sp.y < -50 || sp.x > VW + 50 || sp.y > VH + 50) continue;
       drawChest(ctx, c, sp.x, sp.y, scale);
     }
     /* 传送门 */
     for (var j = 0; j < World.teleports.length; j++) {
       var tp = World.teleports[j];
       var st = Renderer.worldToScreen(tp.x, tp.y);
-      if (st.x < -60 || st.y < -60 || st.x > cv.width + 60 || st.y > cv.height + 60) continue;
+      if (st.x < -60 || st.y < -60 || st.x > VW + 60 || st.y > VH + 60) continue;
       drawTeleport(ctx, tp, st.x, st.y, scale);
     }
     /* NPC */
     for (var k = 0; k < game.npcs.length; k++) {
       var npc = game.npcs[k];
       var sn = Renderer.worldToScreen(npc.x, npc.y);
-      if (sn.x < -60 || sn.y < -60 || sn.x > cv.width + 60 || sn.y > cv.height + 60) continue;
+      if (sn.x < -60 || sn.y < -60 || sn.x > VW + 60 || sn.y > VH + 60) continue;
       drawNPC(ctx, npc, sn.x, sn.y, scale);
     }
     /* 敌人（按 y 排序实现遮挡关系） */
@@ -454,7 +485,7 @@
       var e = es[m];
       if (e.dead) continue;
       var se = Renderer.worldToScreen(e.x, e.y);
-      if (se.x < -80 || se.y < -80 || se.x > cv.width + 80 || se.y > cv.height + 80) continue;
+      if (se.x < -80 || se.y < -80 || se.x > VW + 80 || se.y > VH + 80) continue;
       drawEnemy(ctx, e, se.x, se.y, scale);
     }
     /* 队友（联机） */
@@ -463,7 +494,7 @@
         var mate = L.Net.peers[id];
         if (!mate.x) continue;
         var sm = Renderer.worldToScreen(mate.x, mate.y);
-        if (sm.x < -80 || sm.y < -80 || sm.x > cv.width + 80 || sm.y > cv.height + 80) continue;
+        if (sm.x < -80 || sm.y < -80 || sm.x > VW + 80 || sm.y > VH + 80) continue;
         drawStickman(ctx, sm.x, sm.y, scale * 0.95, {
           color: '#1f6f4f', dir: mate.dir, weapon: 'iron_sword',
           atkAnim: mate.atk ? 0.1 : 0, moving: true
@@ -575,23 +606,35 @@
     /* 天气粒子（雪/雨/火星/落叶/尘埃/暗影/薄雾）画在光照之上，才有空气感 */
     Fx.draw(ctx, game);
 
-    /* 交互提示 */
+    /* 虚拟摇杆可视化：触屏按住左半屏时显示（ox/oy 为 CSS 像素，与本空间一致） */
+    if (Input && Input._touch && Input._touch.active) {
+      var tox = Input._touch.ox, toy = Input._touch.oy;
+      ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(tox, toy, 46, 0, 6.29); ctx.stroke();
+      ctx.fillStyle = 'rgba(90,208,255,0.55)';
+      ctx.beginPath();
+      ctx.arc(tox + Input._touch.dx * 34, toy + Input._touch.dy * 34, 18, 0, 6.29);
+      ctx.fill();
+    }
+
+    /* 交互提示（字号随缩放自适应，手机上保底 13px 可读） */
     var hint = game.interactHint();
     if (hint) {
-      ctx.fillStyle = 'rgba(0,0,0,0.6)';
-      var hw = ctx.measureText(hint).width + 40;
-      ctx.fillRect(cv.width / 2 - hw / 2, cv.height - 130, hw, 30);
-      ctx.fillStyle = '#ffe9a0';
-      ctx.font = 'bold 15px monospace';
+      ctx.font = 'bold ' + Math.max(13, scale * 0.14) + 'px monospace';
       ctx.textAlign = 'center';
-      ctx.fillText(hint, cv.width / 2, cv.height - 109);
+      var hw = ctx.measureText(hint).width + 40;
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillRect(VW / 2 - hw / 2, VH - 130, hw, 30);
+      ctx.fillStyle = '#ffe9a0';
+      ctx.fillText(hint, VW / 2, VH - 109);
     }
   };
 
   /* ---- 探索迷雾：把屏外未探索区域的格子涂黑 ---- */
   function drawFog(ctx, game) {
     var c = Renderer.camera, t = Config.TILE, z = c.zoom;
-    var W = Renderer.canvas.width, H = Renderer.canvas.height;
+    var W = Renderer.vw(), H = Renderer.vh();
     var halfW = W / (2 * t * z), halfH = H / (2 * t * z);
     var step = 2;   // 每 2 格采样一次，控制开销
     var x0 = Math.floor(c.x - halfW), y0 = Math.floor(c.y - halfH);

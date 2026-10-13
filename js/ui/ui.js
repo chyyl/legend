@@ -35,6 +35,26 @@
     $('btn-lobby').onclick = function () { UI.togglePanel('lobby'); };
     $('btn-settings').onclick = function () { UI.togglePanel('settings'); };
 
+    /* 触屏动作按钮（右下角）：等效键盘 E/空格/Q；面板打开时禁用（与键盘行为一致） */
+    var acts = [['btn-act-interact', 'interact'], ['btn-act-roll', 'roll'], ['btn-act-potion', 'potion']];
+    for (var ai = 0; ai < acts.length; ai++) {
+      (function (id, key) {
+        var el = $(id);
+        if (!el) return;
+        var last = 0;
+        var fire = function (ev) {
+          var now = Date.now();
+          if (now - last < 350) return;   // 防 touchstart + click 双触发
+          last = now;
+          if (ev && ev.preventDefault) ev.preventDefault();  // 阻断合成 click 与双击缩放
+          if (!L.Input.enabled) return;
+          L.Input.press(key);
+        };
+        el.addEventListener('touchstart', fire, { passive: false });
+        el.addEventListener('click', fire);   // 桌面/调试环境兜底
+      })(acts[ai][0], acts[ai][1]);
+    }
+
     /* 面板关闭按钮 */
     var closes = document.querySelectorAll('.panel-close');
     for (var i = 0; i < closes.length; i++) closes[i].onclick = function () { UI.closeAll(); };
@@ -61,9 +81,9 @@
     $('btn-reset-save').onclick = function () {
       if (confirm('确定删除存档并重新开始吗？')) { L.Save.clear(); location.reload(); }
     };
-    /* 缩放 */
-    $('zoom-in').onclick = function () { L.Renderer.camera.zoom = Utils.clamp(L.Renderer.camera.zoom + 0.25, 1, 4); };
-    $('zoom-out').onclick = function () { L.Renderer.camera.zoom = Utils.clamp(L.Renderer.camera.zoom - 0.25, 1, 4); };
+    /* 缩放：fitZoom 后桌面约 4.0、手机约 1.2，允许 0.5–8 微调 */
+    $('zoom-in').onclick = function () { L.Renderer.camera.zoom = Utils.clamp(L.Renderer.camera.zoom + 0.25, 0.5, 8); };
+    $('zoom-out').onclick = function () { L.Renderer.camera.zoom = Utils.clamp(L.Renderer.camera.zoom - 0.25, 0.5, 8); };
 
     /* 联机大厅 */
     $('btn-create-room').onclick = function () {
@@ -354,7 +374,10 @@
     /* 点击传送（仅限已解锁传送点） */
     cv.onclick = function (ev) {
       var rect = cv.getBoundingClientRect();
-      var cx = ev.clientX - rect.left, cy = ev.clientY - rect.top;
+      /* 画布 CSS 尺寸可能被响应式压缩（手机上 <520px），点击坐标需换算回画布内部坐标系 */
+      var kx = rect.width ? cv.width / rect.width : 1;
+      var ky = rect.height ? cv.height / rect.height : 1;
+      var cx = (ev.clientX - rect.left) * kx, cy = (ev.clientY - rect.top) * ky;
       for (var h = 0; h < UI._tpHits.length; h++) {
         var hit = UI._tpHits[h];
         if (Utils.dist(cx, cy, hit.x, hit.y) < 9) {
@@ -425,7 +448,7 @@
     if (!g || !g.player) return;
     var p = g.player;
     var box = $('death-panel');
-    box.style.display = 'block';
+    box.style.display = 'flex';   // 与 .overlay 的 flex 居中/可滚动布局一致
     $('death-stats').innerHTML =
       '等级 Lv' + p.lv + '　银币 ' + p.silver + '<br>' +
       '本次击杀 ' + g.totalKills + ' 只怪物　探索区域 ' + Object.keys(World.explored).length + ' 个';

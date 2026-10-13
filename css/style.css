@@ -28,6 +28,14 @@ html, body {
   font-family: "Courier New", "SimHei", monospace;
   overflow: hidden;
   -webkit-user-select: none; user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 交互元素触控优化：立即响应点击（消除 300ms 延迟与双击缩放劫持） */
+.btn, .btn-mini, .btn-act, .panel-close, .region-item, .item-row, .quest-row,
+input, .slider-row input {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 #app { position: relative; width: 100%; height: 100%; }
@@ -42,12 +50,17 @@ html, body {
 /* ============ 开始 / 结算 覆盖层 ============ */
 .overlay {
   position: absolute; inset: 0;
-  display: flex; align-items: center; justify-content: center;
+  display: flex; justify-content: center;
+  align-items: flex-start;          /* 配合子元素 margin:auto：既居中，内容超高时又可滚动到顶部 */
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 16px 8px;
   background: rgba(8, 12, 20, 0.88);
   z-index: 50;
 }
 .start-box {
   width: min(460px, 92vw);
+  margin: auto;                     /* 溢出时自动边距收敛为 0，避免按钮被裁到屏幕外点不到 */
   background: var(--panel);
   border: 3px solid var(--line);
   box-shadow: 0 0 0 3px #0a0f18, 8px 8px 0 rgba(0,0,0,.5);
@@ -91,14 +104,53 @@ html, body {
   font-family: inherit; font-size: 12px; cursor: pointer;
 }
 .btn-mini:hover { border-color: var(--accent); color: var(--accent); }
+/* 触屏没有 hover：按压态反馈让用户确认"点到了"（防止连点把面板又切回去） */
+.btn-mini:active { background: #2a3a52; border-color: var(--accent); color: var(--accent); }
 
 .help { margin-top: 16px; font-size: 11px; color: var(--dim); line-height: 1.8; border-top: 1px dashed var(--line); padding-top: 10px; }
 
 /* ============ HUD ============ */
 #hud { position: absolute; inset: 0; pointer-events: none; z-index: 10; }
-#hud .hud-menu { position: absolute; left: 10px; bottom: 10px; display: flex; gap: 6px; pointer-events: auto; }
+/* 左下菜单：避开系统手势条（safe-area），窄屏自动换行让开右下动作区 */
+#hud .hud-menu {
+  position: absolute;
+  left: calc(10px + env(safe-area-inset-left, 0px));
+  bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  display: flex; flex-wrap: wrap; gap: 6px;
+  max-width: calc(100% - 86px);
+  pointer-events: auto;
+}
 
-.hud-top { display: flex; justify-content: space-between; padding: 10px; }
+/* 右下触屏动作按钮（交互/翻滚/药水），仅触屏或窄屏显示 */
+.hud-actions {
+  position: absolute;
+  right: calc(10px + env(safe-area-inset-right, 0px));
+  bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  display: none; flex-direction: column; gap: 8px;
+  pointer-events: auto;
+}
+@media (hover: none), (pointer: coarse), (max-width: 640px) {
+  .hud-actions { display: flex; }
+}
+.btn-act {
+  width: 54px; height: 54px;
+  background: rgba(30, 42, 61, .88); color: var(--text);
+  border: 2px solid var(--line);
+  font-family: inherit; font-size: 12px;
+  box-shadow: 3px 3px 0 rgba(0,0,0,.45);
+}
+.btn-act:active { transform: translate(2px, 2px); border-color: var(--accent); color: var(--accent); }
+.btn-act.big {
+  width: 64px; height: 64px; font-size: 14px;
+  border-color: var(--accent); color: var(--accent);
+}
+
+.hud-top {
+  display: flex; justify-content: space-between;
+  padding: calc(10px + env(safe-area-inset-top, 0px))
+           calc(10px + env(safe-area-inset-right, 0px)) 10px
+           calc(10px + env(safe-area-inset-left, 0px));
+}
 .hud-left { width: 260px; }
 .hud-name { font-size: 13px; margin-bottom: 4px; text-shadow: 1px 1px 0 #000; }
 .hud-weapon.q-R { color: #4da6ff; } .hud-weapon.q-SR { color: #b266ff; } .hud-weapon.q-SSR { color: #ff9a3d; }
@@ -118,7 +170,7 @@ html, body {
 .hud-stats { display: flex; gap: 12px; font-size: 12px; margin-top: 4px; text-shadow: 1px 1px 0 #000; }
 
 .hud-right { text-align: right; }
-#hud-minimap { border: 3px solid var(--line); background: #0a0f18; box-shadow: 4px 4px 0 rgba(0,0,0,.5); }
+#hud-minimap { border: 3px solid var(--line); background: #0a0f18; box-shadow: 4px 4px 0 rgba(0,0,0,.5); image-rendering: pixelated; }
 .hud-place { font-size: 12px; margin-top: 4px; color: var(--accent); text-shadow: 1px 1px 0 #000; }
 
 /* 飘字提示 */
@@ -176,7 +228,12 @@ html, body {
 
 /* 地图 */
 .map-body { display: flex; gap: 14px; }
-#bigmap { border: 2px solid var(--line); background: #0a0f18; cursor: pointer; image-rendering: pixelated; }
+/* 响应式：手机上大地图按面板宽度压缩显示（配合 ui.js 的坐标换算，点击传送不漂移） */
+#bigmap {
+  border: 2px solid var(--line); background: #0a0f18; cursor: pointer;
+  image-rendering: pixelated;
+  width: 520px; max-width: 100%; height: auto;   /* 宽度受限时按固有 1:1 比例等比缩小 */
+}
 .map-side { flex: 1; font-size: 12px; }
 .zoom-row { display: flex; gap: 6px; margin: 8px 0; }
 .region-list { max-height: 300px; overflow-y: auto; }
@@ -203,4 +260,15 @@ html, body {
   .hud-left { width: 180px; }
   #hud-minimap { width: 96px; height: 96px; }
   .btn, .btn-mini { padding: 8px 12px; }
+  .panel-close { padding: 10px 14px; }        /* ✕ 关闭键加大触控区 */
+  #toasts { width: 210px; top: 230px; }
+}
+
+/* 触摸设备：最小 44px 触控目标（Apple/HIG 标准），指针精确的鼠标设备不受影响 */
+@media (pointer: coarse) {
+  .btn { min-height: 44px; }
+  .btn-mini { min-height: 38px; }
+  .btn-act { width: 56px; height: 56px; }
+  .btn-act.big { width: 66px; height: 66px; }
+  .region-item, .item-row { padding: 10px 8px; }
 }
