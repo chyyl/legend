@@ -57,7 +57,9 @@
     });
     // 敌人死亡：掉落结算
     LG.U.bus.on('enemy_dead', (e) => {
-      const drop = LG.Loot.dropFromEnemy(e.kind, currentDifficulty(), e.region.lv);
+      // region 可能缺失（联机同步重建的敌人、测试注入对象），按当前位置解析兜底
+      const erg = e.region || LG.Terrain.regionOf(e.x, e.y);
+      const drop = LG.Loot.dropFromEnemy(e.kind, currentDifficulty(), erg && erg.lv ? erg.lv : 1);
       LG.Inv.silver += drop.silver;
       LG.Player.gainExp(drop.exp * LG.Inv.calcStats().expMul);
       drop.items.forEach((it) => LG.Inv.add(it));

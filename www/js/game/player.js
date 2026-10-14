@@ -145,8 +145,10 @@
       // 4朝向：按主轴更新渲染朝向（斜向移动取绝对值大的轴）
       if (Math.abs(dx) > Math.abs(dy)) P.dir = dx > 0 ? 'e' : 'w';
       else if (dy !== 0) P.dir = dy > 0 ? 's' : 'n';
-      LG.Terrain.fog.reveal(P.x, P.y); // 迷宫迷雾揭示
     }
+    // 迷宫迷雾：每帧跟随玩家揭示（原在移动分支内，传送/静止站立时落点全黑、
+    // 6格内敌人隐身挨打；regionOf 在非迷宫区域提前返回，开销可忽略）
+    LG.Terrain.fog.reveal(P.x, P.y);
   }
 
   /* 倒地救援/超时复活（Q26/Q66） */

@@ -254,30 +254,120 @@
     g.putImageData(img, 0, 0);
   }
 
+  /* 大地图视图状态（跨开关面板持久：缩放倍率与可见区左上角，底图像素坐标） */
+  let mapV = { x0: 0, y0: 0, z: 1 };
+
   function renderMap() {
-    const p = panel(T()('map'), `<canvas id="bigmap" width="480" height="480" style="width:100%;max-width:480px;display:block;margin:0 auto"></canvas>
-      <div style="text-align:center;margin-top:6px;color:#9a8f70">${T()('teleport_hint')}</div>`);
+    const p = panel(T()('map'), `<canvas id="bigmap" width="480" height="480" style="width:100%;max-width:480px;display:block;margin:0 auto;touch-action:none;cursor:grab"></canvas>
+      <div style="text-align:center;margin-top:6px">
+        <button class="btn small" id="bm-out">－</button><span id="bm-zoom" style="margin:0 12px;color:#9a8f70;display:inline-block;min-width:44px">1.0×</span><button class="btn small" id="bm-in">＋</button>
+      </div>
+      <div style="text-align:center;margin-top:4px;color:#9a8f70">${T()('teleport_hint')}</div>`);
     p.dataset.page = 'map';
     const cv = p.querySelector('#bigmap');
     const g = cv.getContext('2d');
     const S = 480 / LG.Config.SIZE;
-    bakeTerrainMap(g, 480); // 真实地形底图
-    // 区域名标签（描边保证任何底色上可读；不再画假的 36×36 色块）
-    LG.Config.REGIONS.forEach((rg) => {
-      g.font = 'bold 11px "LegendKai", sans-serif'; g.textAlign = 'center';
-      const name = LG.I18n.lang === 'zh' ? rg.zh : rg.en;
-      g.lineWidth = 3; g.strokeStyle = 'rgba(0,0,0,0.85)';
-      g.strokeText(name, rg.cx * S, rg.cy * S);
-      g.fillStyle = '#e8d9a8'; g.fillText(name, rg.cx * S, rg.cy * S);
-    });
-    // 玩家位置
-    g.fillStyle = '#ff5050';
-    g.fillRect(LG.Player.x * S - 3, LG.Player.y * S - 3, 6, 6);
-    // 点击传送（Q13）
-    cv.onclick = (e) => {
+    // 底图烘焙到离屏画布：地形是静态层，区域名/玩家点为动态层，缩放时按视图变换重画
+    const base = document.createElement('canvas');
+    base.width = 480; base.height = 480;
+    bakeTerrainMap(base.getContext('2d'), 480); // 真实地形底图
+    const ZMIN = 1, ZMAX = 8;
+    const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+    function clampView() { const span = 480 / mapV.z; mapV.x0 = clamp(mapV.x0, 0, 480 - span); mapV.y0 = clamp(mapV.y0, 0, 480 - span); }
+    /* 以画布显示坐标 (sx,sy) 为锚缩放：锚点下的底图内容保持不动（滚轮/捏合跟手） */
+    function zoomAt(nz, sx, sy) {
+      nz = clamp(nz, ZMIN, ZMAX);
+      const bx = mapV.x0 + sx / mapV.z, by = mapV.y0 + sy / mapV.z;
+      mapV.z = nz; mapV.x0 = bx - sx / mapV.z; mapV.y0 = by - sy / mapV.z;
+      clampView();
+    }
+    function redraw() {
+      const span = 480 / mapV.z, z = mapV.z;
+      g.clearRect(0, 0, 480, 480);
+      g.imageSmoothingEnabled = false;
+      g.drawImage(base, mapV.x0, mapV.y0, span, span, 0, 0, 480, 480);
+      // 区域名标签（位置随视图变换，字号恒定保证放大后仍可读；描边保证任何底色上可读）
+      LG.Config.REGIONS.forEach((rg) => {
+        const sx = rg.cx * S - mapV.x0, sy = rg.cy * S - mapV.y0;
+        if (sx < -30 || sx > 480 + 30 || sy < -30 || sy > 480 + 30) return;
+        g.font = 'bold 11px "LegendKai", sans-serif'; g.textAlign = 'center';
+        const name = LG.I18n.lang === 'zh' ? rg.zh : rg.en;
+        g.lineWidth = 3; g.strokeStyle = 'rgba(0,0,0,0.85)';
+        g.strokeText(name, sx * z, sy * z);
+        g.fillStyle = '#e8d9a8'; g.fillText(name, sx * z, sy * z);
+      });
+      // 玩家位置
+      g.fillStyle = '#ff5050';
+      g.fillRect((LG.Player.x * S - mapV.x0) * z - 3, (LG.Player.y * S - mapV.y0) * z - 3, 6, 6);
+      const zb = p.querySelector('#bm-zoom'); if (zb) zb.textContent = mapV.z.toFixed(1) + '×';
+    }
+    /* 打开时若玩家不在可见区内（上次放大后离场），自动对焦玩家 */
+    clampView();
+    if (mapV.z > 1) {
+      const px = LG.Player.x * S, py = LG.Player.y * S, span = 480 / mapV.z;
+      if (px < mapV.x0 || px > mapV.x0 + span || py < mapV.y0 || py > mapV.y0 + span) { mapV.x0 = px - span / 2; mapV.y0 = py - span / 2; clampView(); }
+    }
+    redraw();
+    p.querySelector('#bm-in').onclick = () => { zoomAt(mapV.z * 1.5, 240, 240); redraw(); };
+    p.querySelector('#bm-out').onclick = () => { zoomAt(mapV.z / 1.5, 240, 240); redraw(); };
+    // 滚轮缩放（桌面，锚在指针）
+    cv.addEventListener('wheel', (e) => {
+      e.preventDefault();
       const r = cv.getBoundingClientRect();
-      const wx = ((e.clientX - r.left) / r.width) * LG.Config.SIZE;
-      const wy = ((e.clientY - r.top) / r.height) * LG.Config.SIZE;
+      zoomAt(mapV.z * (e.deltaY > 0 ? 1 / 1.3 : 1.3),
+        (e.clientX - r.left) / r.width * 480, (e.clientY - r.top) / r.height * 480);
+      redraw();
+    }, { passive: false });
+    cv.addEventListener('contextmenu', (e) => e.preventDefault());
+    /* 鼠标拖拽平移（指针捕获，移出画布不断流）；位移超阈值置 panned，点击不触发传送 */
+    let pDrag = null, panned = false;
+    cv.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'touch') return; // 触屏走 touch 事件（单指平移/双指捏合）
+      cv.setPointerCapture(e.pointerId); pDrag = { x: e.clientX, y: e.clientY };
+    });
+    cv.addEventListener('pointermove', (e) => {
+      if (!pDrag || e.pointerType === 'touch') return;
+      const r = cv.getBoundingClientRect();
+      const dx = (e.clientX - pDrag.x) / r.width * 480, dy = (e.clientY - pDrag.y) / r.height * 480;
+      if (!panned && Math.hypot(e.clientX - pDrag.x, e.clientY - pDrag.y) > 4) panned = true;
+      if (panned) { mapV.x0 -= dx / mapV.z; mapV.y0 -= dy / mapV.z; clampView(); redraw(); }
+      pDrag = { x: e.clientX, y: e.clientY };
+    });
+    cv.addEventListener('pointerup', () => { pDrag = null; });
+    cv.addEventListener('pointercancel', () => { pDrag = null; });
+    /* 触屏：双指捏合缩放（锚在两指中点）+ 单指拖拽平移 */
+    let pinchD = 0, tDrag = null;
+    const tpos = (t) => ({ x: t.clientX, y: t.clientY });
+    cv.addEventListener('touchstart', (e) => {
+      e.preventDefault(); panned = false;
+      if (e.touches.length === 2) { const a = tpos(e.touches[0]), b = tpos(e.touches[1]); pinchD = Math.hypot(a.x - b.x, a.y - b.y); tDrag = null; }
+      else if (e.touches.length === 1) tDrag = tpos(e.touches[0]);
+    }, { passive: false });
+    cv.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      const r = cv.getBoundingClientRect();
+      if (e.touches.length === 2 && pinchD > 0) {
+        const a = tpos(e.touches[0]), b = tpos(e.touches[1]), d = Math.hypot(a.x - b.x, a.y - b.y);
+        if (d > 0) zoomAt(mapV.z * (d / pinchD), ((a.x + b.x) / 2 - r.left) / r.width * 480, ((a.y + b.y) / 2 - r.top) / r.height * 480);
+        pinchD = d; panned = true; redraw();
+      } else if (e.touches.length === 1 && tDrag) {
+        const t = tpos(e.touches[0]);
+        const dx = (t.x - tDrag.x) / r.width * 480, dy = (t.y - tDrag.y) / r.height * 480;
+        if (!panned && Math.hypot(t.x - tDrag.x, t.y - tDrag.y) > 8) panned = true;
+        if (panned) { mapV.x0 -= dx / mapV.z; mapV.y0 -= dy / mapV.z; clampView(); redraw(); }
+        tDrag = t;
+      }
+    }, { passive: false });
+    cv.addEventListener('touchend', (e) => {
+      if (e.touches.length < 2) pinchD = 0;
+      if (e.touches.length === 0) tDrag = null;
+    });
+    // 点击传送（Q13）：按当前视图换算世界坐标；拖拽/捏合后本次不触发
+    cv.onclick = (e) => {
+      if (panned) { panned = false; return; }
+      const r = cv.getBoundingClientRect();
+      const wx = (mapV.x0 + ((e.clientX - r.left) / r.width * 480) / mapV.z) / S;
+      const wy = (mapV.y0 + ((e.clientY - r.top) / r.height * 480) / mapV.z) / S;
       const near = LG.Path.nearestWalkable(wx | 0, wy | 0, 12);
       if (near) { LG.Player.x = near.x; LG.Player.y = near.y; toast('已传送'); closePanel(); }
       else toast('该处无法到达');
@@ -759,12 +849,17 @@
     hudRects.settings = { x: sbx * U, y: sby * U, w: sbw * U, h: sbh * U };
     hudRects.minimap = { x: mmx * U, y: mmy * U, w: mms * U, h: mms * U };
 
-    /* ===== 底部居中：BOSS 血条（黑台 + 暗红渐变 + 金框 + 两端菱形铆） ===== */
+    /* ===== BOSS 血条（黑台 + 暗红渐变 + 金框 + 两端菱形铆） =====
+       桌面/竖屏：底部居中（粗指针上移 H-210 避开右下触屏按钮簇）；
+       触屏横屏（W>H）：改置顶居中——固定 H-210 的定位在矮屏（390~440px 高）
+       会落到屏幕中部，血条直接切过 BOSS 本体与战斗画面（反馈"BOSS血条竟然可以重叠"） */
     const boss = LG.Enemy.list.find((e) => e.isBoss && e.hp > 0);
     if (boss) {
-      // 物理宽=屏宽56%（/U 还原到虚拟坐标）；粗指针设备上移避开右下触屏按钮
-      const bbw = Math.min(W * 0.56, 540) / U, bbx = Math.round((vw - bbw) / 2),
-            bby = Math.round((coarse ? H - 210 : H - 62) / U), bbh = 16;
+      const topBar = coarse && W > H;
+      // 物理宽=屏宽56%（横屏50%，顶部在两侧铭牌/徽章之间留空；/U 还原到虚拟坐标）
+      const bbw = (topBar ? Math.min(W * 0.5, 540) : Math.min(W * 0.56, 540)) / U,
+            bbx = Math.round((vw - bbw) / 2),
+            bby = Math.round((topBar ? 34 : (coarse ? H - 210 : H - 62)) / U), bbh = 16;
       g.font = fs(15) + 'px "LegendKai", sans-serif'; g.textAlign = 'center';
       const bname = LG.I18n.lang === 'zh' ? (boss.type.zh || boss.type.en) : (boss.type.en || boss.type.zh);
       g.fillStyle = 'rgba(0,0,0,0.85)'; g.fillText(bname, vw / 2 + 1, bby - 7 + 1);
