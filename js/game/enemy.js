@@ -81,6 +81,15 @@
     return e;
   }
 
+  /* 脚印盒逐轴移动（与 player.js 同规则）：修复敌人追击/回家时身体侵入墙海，
+     尤其"回家路径"此前完全没有碰撞检查（直接穿墙）。当前位形非法时放行以便脱困。 */
+  function stepTo(e, nx, ny) {
+    if (LG.Terrain.boxPenalty(e.x, e.y) === 0) {
+      if (LG.Terrain.passableBox(nx, e.y)) e.x = nx;
+      if (LG.Terrain.passableBox(e.x, ny)) e.y = ny;
+    } else { e.x = nx; e.y = ny; }
+  }
+
   /* 每帧 AI */
   function update(dt) {
     const px = LG.Player.x, py = LG.Player.y;
@@ -108,11 +117,10 @@
       if (d <= e.aggro && !LG.Player.down) {
         if (!e.home) e.home = { x: e.x, y: e.y };
         e.state = 'chase';
-        // 缓慢移动（速度固定，难度不改移速 Q75）
+        // 缓慢移动（速度固定，难度不改移速 Q75）；脚印盒碰撞防穿墙海
         const sp = e.speed * dt;
         const nx = e.x + ((px - e.x) / d) * sp, ny = e.y + ((py - e.y) / d) * sp;
-        if (LG.Terrain.walkable(nx, e.y)) e.x = nx;
-        if (LG.Terrain.walkable(e.x, ny)) e.y = ny;
+        stepTo(e, nx, ny);
         e.facing = px > e.x ? 1 : -1;
         e.dir = Math.abs(px - e.x) > Math.abs(py - e.y) ? (px > e.x ? 'e' : 'w') : (py > e.y ? 's' : 'n');
         // 近身攻击
@@ -133,11 +141,10 @@
           }
         }
       } else if (e.home && leash > 1) {
-        // 脱战回家
+        // 脱战回家（补上碰撞检查：此前该路径完全不查地形，可直接穿墙回家）
         const hd = LG.U.dist(e.x, e.y, e.home.x, e.home.y);
         const sp = e.speed * dt;
-        e.x += ((e.home.x - e.x) / hd) * sp;
-        e.y += ((e.home.y - e.y) / hd) * sp;
+        stepTo(e, e.x + ((e.home.x - e.x) / hd) * sp, e.y + ((e.home.y - e.y) / hd) * sp);
         e.dir = Math.abs(e.home.x - e.x) > Math.abs(e.home.y - e.y) ? (e.home.x > e.x ? 'e' : 'w') : (e.home.y > e.y ? 's' : 'n');
         e.state = 'idle';
       }

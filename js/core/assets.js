@@ -385,5 +385,6 @@
     });
   }
 
-  LG.Assets = { tile, groundTile, hero, enemy, boss, weaponIcon, armorIcon, bondIcon, chest, hairStyles, _cache: cache };
+  // TILE_COLORS 导出：ui.renderMap 烘焙真实地形底图时按瓦片类型取色（与渲染同源）
+  LG.Assets = { tile, groundTile, hero, enemy, boss, weaponIcon, armorIcon, bondIcon, chest, hairStyles, TILE_COLORS, _cache: cache };
 })();

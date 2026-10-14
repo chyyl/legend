@@ -6,7 +6,8 @@
 
    支持的输入方式：
      · 键鼠：WASD 移动、左键点击移动/交互/攻击、滚轮缩放
-     · 触屏：左半屏虚拟摇杆（含视觉反馈）、右半屏点击、右下 HUD 按钮、双指捏合缩放
+     · 触屏：左半屏 轻点=点击寻路 / 拖动=虚拟摇杆（含视觉反馈）、右半屏点击、
+       右下 HUD 按钮、双指捏合缩放
      · 手柄：左摇杆/十字键移动，A=交互 B=格挡 X=跳跃 Y=药水 LB=切换攻击模式 RT=攻击
 
    对外接口（window.LG.Input）：
@@ -42,6 +43,7 @@
     up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD',
     attack: 'KeyJ', block: 'KeyF', jump: 'Space', potion: 'KeyQ',
     bag: 'KeyB', map: 'KeyM', quest: 'KeyL', mode: 'Tab', interact: 'KeyE',
+    menu: 'Escape', // 游戏内设置面板开关（新增键自动并入老存档，见下方 Object.assign）
   }, LG.U.LS.get('keymap', {}));
   function keyFor(a) { return keymap[a]; }
   function setKey(a, code) { keymap[a] = code; LG.U.LS.set('keymap', keymap); }
@@ -81,31 +83,39 @@
     /* ===== 触屏 ===== */
     const touches = {};
     let pinchStart = null;
+    let pending = null; // 左半屏待定指针：拖动>死区升级为摇杆，轻点松手转点击寻路
     canvas.addEventListener('touchstart', (e) => {
       e.preventDefault();
       for (const t of e.changedTouches) {
         const p = pos(t);
         touches[t.identifier] = p;
-        // 左半屏（非按钮区）= 虚拟摇杆；否则 = 点击（交互/移动/按钮）
+        // 左半屏（非按钮区）= 摇杆候选：轻点=点击寻路，拖动=摇杆（此前按下即摇杆，
+        // 导致"左半侧无法点击移动"）；其余位置 = 点击（交互/移动/按钮）
         if (t.clientX < window.innerWidth / 2 && !hitButton(p)) {
-          state.joy = { base: p, cur: p };
+          pending = { id: t.identifier, p, t0: performance.now(), dragged: false };
         } else {
           state.click = p;
         }
       }
-      if (e.touches.length === 2) { pinchStart = { d: touchDist(e) }; state.joy = null; }
+      if (e.touches.length === 2) { pinchStart = { d: touchDist(e) }; state.joy = null; pending = null; }
     }, { passive: false });
 
     canvas.addEventListener('touchmove', (e) => {
       e.preventDefault();
       for (const t of e.changedTouches) {
-        if (state.joy && touches[t.identifier]) {
+        if (pending && pending.id === t.identifier && touches[t.identifier]) {
           const p = pos(t);
-          const dx = p.x - state.joy.base.x, dy = p.y - state.joy.base.y;
-          const d = Math.hypot(dx, dy);
-          const max = 60; // 摇杆半径
-          const k = d > max ? max / d : 1;
-          state.joy.cur = { x: state.joy.base.x + dx * k, y: state.joy.base.y + dy * k };
+          if (!state.joy) {
+            // 首次位移超过死区（8px，与 updateMoveVec 一致）才激活摇杆并显示视觉反馈
+            const bd = Math.hypot(p.x - pending.p.x, p.y - pending.p.y);
+            if (bd > 8) { state.joy = { id: t.identifier, base: pending.p, cur: p }; pending.dragged = true; }
+          } else if (state.joy.id === t.identifier) {
+            const dx = p.x - state.joy.base.x, dy = p.y - state.joy.base.y;
+            const d = Math.hypot(dx, dy);
+            const max = 60; // 摇杆半径
+            const k = d > max ? max / d : 1;
+            state.joy.cur = { x: state.joy.base.x + dx * k, y: state.joy.base.y + dy * k };
+          }
         }
       }
       if (e.touches.length === 2 && pinchStart) {
@@ -117,9 +127,17 @@
 
     function endTouch(e) {
       e.preventDefault();
-      for (const t of e.changedTouches) delete touches[t.identifier];
+      for (const t of e.changedTouches) {
+        delete touches[t.identifier];
+        // 轻点（未升级为摇杆且时间短）→ 转为点击寻路（修复"左半屏无法点击移动"）
+        if (pending && pending.id === t.identifier) {
+          if (!pending.dragged && performance.now() - pending.t0 < 350) state.click = pending.p;
+          pending = null;
+        }
+        if (state.joy && state.joy.id === t.identifier) state.joy = null; // 摇杆手指抬起即停
+      }
       if (e.touches.length < 2) pinchStart = null;
-      if (Object.keys(touches).length === 0) state.joy = null;
+      if (Object.keys(touches).length === 0) { state.joy = null; pending = null; }
     }
     canvas.addEventListener('touchend', endTouch, { passive: false });
     canvas.addEventListener('touchcancel', endTouch, { passive: false });

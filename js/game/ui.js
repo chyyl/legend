@@ -1,14 +1,16 @@
 /* ============================================================================
    js/game/ui.js —— 界面系统（Q50 HUD/五页菜单，Q49 亮度，Q51 角色创建）
    ----------------------------------------------------------------------------
-   职责：Canvas 绘制 HUD（血条/快捷栏/小地图入口/攻击模式），DOM 实现五页菜单
-         （背包/属性/任务/地图/设置）、NPC 对话框、商店、强化、角色创建、教程。
+   职责：Canvas 绘制 HUD（血条/快捷栏/攻击模式/设置按钮/任务追踪条+目标引导），
+         DOM 实现五页菜单（背包/属性/任务/地图/设置）、NPC 对话框、商店、强化、角色创建、教程。
 
    对外接口（window.LG.UI）：
      .init(canvas) .drawHUD() .toast(msg)
      .openPanel(name) .closePanel()
-     .renderBag() .renderStats() .renderQuests() .renderMap() .renderSettings()
+     .renderBag() .renderStats() .renderQuests(npc?) .renderMap() .renderSettings()
      .charCreate() .dialog(npc, lines) .tutorial()
+     .hudHit(c) -> 'mode'|'settings'|'tracker'|null   HUD 热区命中（engine 点击分发）
+     .escMenu()                                       ESC 开关设置面板（keymap.menu）
 
    DOM 面板写入 #overlay；HUD 直接绘制到主 canvas。
    依赖：i18n（文案）、inv/quest/npc/save/camera/terrain（数据）。
@@ -31,7 +33,7 @@
     LG.U.bus.on('levelup', (lv) => toast(T()('level') + ' ' + lv + '!'));
     LG.U.bus.on('open_shop', openShop);
     LG.U.bus.on('open_enhance', openEnhance);
-    LG.U.bus.on('open_quests', () => renderQuests()); // 任务 NPC（此前事件未绑定，点击无反应）
+    LG.U.bus.on('open_quests', (npc) => renderQuests(npc)); // 任务 NPC（按其区域过滤可接任务）
     LG.U.bus.on('open_dialog', ({ npc, lines }) => dialog(npc, lines));
     LG.U.bus.on('open_tutorial', () => tutorial());   // 教官 NPC（npc.js 发的是单数形式）
     LG.U.bus.on('open_tutorials', () => tutorial());
@@ -83,6 +85,7 @@
   /* ---------- 背包页（Q50 五页之一；阶段十二：装备列带标签 + 行囊网格 + 详情卡） ---------- */
   function renderBag() {
     const p = panel(T()('bag'), '');
+    p.dataset.page = 'bag'; // 渲染器自标页面：行内重渲染（装备/出售）后 togglePage/ESC 仍能识别关闭
     p.classList.add('panel-bag'); // 显式宽度：grid auto-fill 在 shrink-to-fit 面板内会按 max-content 只算出 1 列
     const body = p.querySelector('.pbody');
     const zh = LG.I18n.lang === 'zh';
@@ -160,41 +163,112 @@
       <tr><td>${T()('silver')}</td><td>${LG.Inv.silver}</td></tr>
       <tr><td>${T()('bonds')}</td><td style="text-align:left">${bl}</td></tr>
     </table>`);
+    p.dataset.page = 'stat';
     return p;
   }
 
-  /* ---------- 任务页 ---------- */
-  function renderQuests() {
-    let html = '';
+  /* ---------- 任务页（阶段十三：补"接取"入口——此前 Quest.accept 无任何调用方，
+     任务系统实际不可用，是"不知道干什么"的根因之一） ----------
+     npc 传入时按其区域过滤可接任务（营地首领=主线+营地支线，区域向导=本区域任务）；
+     快捷键 L 打开时按玩家当前区域过滤。 */
+  function renderQuests(npc) {
+    const zh = LG.I18n.lang === 'zh';
     const act = LG.Quest.active;
-    if (!act.length) html = '<p style="text-align:center;color:#999">暂无进行中任务</p>';
-    act.forEach((q) => {
-      html += `<div class="room-item"><div><b>${LG.I18n.lang === 'zh' ? q.zh : q.en}</b>
-        <div style="font-size:13px;color:#9a8f70">${T()('q_' + q.type)} ${q.got}/${q.need}</div></div>
-        ${q.got >= q.need ? `<button class="btn small primary" data-sub="${q.id}">${T()('quest_submit')}</button>` : ''}</div>`;
-    });
+    // 可接筛选：前置已完成 + 排除暂无进度来源的任务（营地不刷敌、护送无进度事件）
+    const canAccept = (q) => {
+      if (q.accepted || q.done) return false;
+      if (q.prereq) { const pr = LG.Quest.all.find((x) => x.id === q.prereq); if (pr && !pr.done) return false; }
+      if (q.type === 'escort') return false;
+      if (q.type === 'kill' && q.region === 'camp') return false;
+      if (q.main) return true;
+      const region = npc ? npc.region : ((LG.Terrain.regionOf(LG.Player.x, LG.Player.y) || {}).id);
+      return !region || q.region === region;
+    };
+    const avail = LG.Quest.all.filter(canAccept);
+    let html = '';
+    if (act.length) {
+      act.forEach((q) => {
+        html += `<div class="room-item"><div><b>${zh ? q.zh : q.en}</b>
+          <div style="font-size:13px;color:#9a8f70">${T()('q_' + q.type)} ${q.got}/${q.need}</div></div>
+          ${q.got >= q.need ? `<button class="btn small primary" data-sub="${q.id}">${T()('quest_submit')}</button>` : ''}</div>`;
+      });
+    }
+    if (avail.length) {
+      html += `<div style="margin:9px 0 3px;font-size:13px;letter-spacing:3px;color:#d8b45a;text-align:center">${T()('quest_available')}</div>`;
+      avail.forEach((q) => {
+        html += `<div class="room-item"><div><b>${zh ? q.zh : q.en}</b>
+          <div style="font-size:13px;color:#9a8f70">${T()('q_' + q.type)} ${q.need}</div></div>
+          <button class="btn small" data-acc="${q.id}">${T()('quest_accept')}</button></div>`;
+      });
+    }
+    if (!act.length && !avail.length) html = `<p style="text-align:center;color:#999">${T()('quest_none')}</p>`;
     const p = panel(T()('quest'), html);
+    p.dataset.page = 'quest'; // 重渲染（接取/提交）后仍可被 togglePage('quest')/ESC 识别
     p.querySelectorAll('[data-sub]').forEach((b) => {
-      b.onclick = () => { LG.Quest.submit(b.dataset.sub); renderQuests(); };
+      b.onclick = () => { LG.Quest.submit(b.dataset.sub); renderQuests(npc); };
+    });
+    p.querySelectorAll('[data-acc]').forEach((b) => {
+      b.onclick = () => {
+        if (LG.Quest.accept(b.dataset.acc)) { toast(zh ? '已接取任务' : 'Quest accepted'); renderQuests(npc); }
+        else toast(zh ? '需先完成前置任务' : 'Prerequisite not met');
+      };
     });
     return p;
   }
 
-  /* ---------- 地图页（Q13 点击任意点传送，Q15 仅设置菜单查看） ---------- */
+  /* ---------- 地图页（Q13 点击任意点传送；阶段十三：烘焙真实地形） ----------
+     此前只画"区域 36×36 色块 + 底色"，与实景地形不符（反馈"地图显示与真实地图不一样"）。
+     现按 Terrain.raw() 逐像素取真实瓦片类型着色：类型底色 + 高差增亮/压暗 +
+     迷宫未探索压黑（与主视口一致），再叠区域名 / 玩家点 / 点击传送。 */
+  // 与 terrain.js 瓦片类型枚举同序（0草 1土 2沙 3雪 4岩 5水 6路 7墙 8城 9虚空）
+  const MAP_TYPES = ['grass', 'dirt', 'sand', 'snow', 'rock', 'water', 'road', 'wall', 'castle', 'void'];
+  function bakeTerrainMap(g, S) {
+    const raw = LG.Terrain.raw();
+    if (!raw || !raw.tiles) return;
+    const N = LG.Config.SIZE, ts = raw.tiles, hs = raw.height;
+    const C = LG.Assets.TILE_COLORS;
+    const rgb = MAP_TYPES.map((n) => { // hex -> [r,g,b]（打开地图时解析一次）
+      const h = ((C[n] || C.grass)[0] || '#3f6b3a').replace('#', '');
+      const v = parseInt(h, 16);
+      return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
+    });
+    const img = g.createImageData(S, S), d = img.data;
+    for (let py = 0; py < S; py++) {
+      const wy = Math.min(N - 1, (py * N / S) | 0);
+      for (let px = 0; px < S; px++) {
+        const wx = Math.min(N - 1, (px * N / S) | 0);
+        const i = wy * N + wx, o = (py * S + px) * 4;
+        // 迷宫未探索：与主视口一致（不绘制 -> 深底色）
+        if (LG.Terrain.isMazeAt(wx, wy) && !LG.Terrain.fog.visible(wx, wy)) {
+          d[o] = 11; d[o + 1] = 13; d[o + 2] = 18; d[o + 3] = 255; continue;
+        }
+        const h = hs[i];
+        const c = rgb[ts[i]] || rgb[0];
+        const k = h === 2 ? 0.62 : h === 1 ? 1.14 : 1; // 高山压暗（不可走提示）；台地增亮
+        d[o] = Math.min(255, c[0] * k);
+        d[o + 1] = Math.min(255, c[1] * k);
+        d[o + 2] = Math.min(255, c[2] * k);
+        d[o + 3] = 255;
+      }
+    }
+    g.putImageData(img, 0, 0);
+  }
+
   function renderMap() {
     const p = panel(T()('map'), `<canvas id="bigmap" width="480" height="480" style="width:100%;max-width:480px;display:block;margin:0 auto"></canvas>
       <div style="text-align:center;margin-top:6px;color:#9a8f70">${T()('teleport_hint')}</div>`);
+    p.dataset.page = 'map';
     const cv = p.querySelector('#bigmap');
     const g = cv.getContext('2d');
     const S = 480 / LG.Config.SIZE;
-    // 绘制区域色块
-    g.fillStyle = '#12202e'; g.fillRect(0, 0, 480, 480);
+    bakeTerrainMap(g, 480); // 真实地形底图
+    // 区域名标签（描边保证任何底色上可读；不再画假的 36×36 色块）
     LG.Config.REGIONS.forEach((rg) => {
-      g.fillStyle = '#2e4a3a';
-      const sx = rg.cx * S - 18, sy = rg.cy * S - 18;
-      g.fillRect(sx, sy, 36, 36);
-      g.fillStyle = '#d8b45a'; g.font = '11px sans-serif'; g.textAlign = 'center';
-      g.fillText(LG.I18n.lang === 'zh' ? rg.zh : rg.en, rg.cx * S, rg.cy * S - 22);
+      g.font = 'bold 11px "LegendKai", sans-serif'; g.textAlign = 'center';
+      const name = LG.I18n.lang === 'zh' ? rg.zh : rg.en;
+      g.lineWidth = 3; g.strokeStyle = 'rgba(0,0,0,0.85)';
+      g.strokeText(name, rg.cx * S, rg.cy * S);
+      g.fillStyle = '#e8d9a8'; g.fillText(name, rg.cx * S, rg.cy * S);
     });
     // 玩家位置
     g.fillStyle = '#ff5050';
@@ -237,6 +311,7 @@
     p.querySelector('#s-key').onclick = () => renderKeybind();
     p.querySelector('#s-save').onclick = () => { LG.Save.save(1); toast('已保存'); };
     p.querySelector('#s-load').onclick = () => { LG.Save.load(1); toast('已读取'); closePanel(); };
+    p.dataset.page = 'settings'; // 热区按钮/ESC（escMenu）据此识别页面类面板
     // 主菜单打开的设置：给一个明确的"返回"入口（小屏用户不依赖右上角 ✕）
     if (LG.Engine && LG.Engine.scene === 'menu') {
       const back = document.createElement('button');
@@ -249,12 +324,13 @@
     return p;
   }
   function renderKeybind() {
-    const acts = ['up', 'down', 'left', 'right', 'attack', 'block', 'jump', 'potion', 'bag', 'map', 'quest'];
+    const acts = ['up', 'down', 'left', 'right', 'attack', 'block', 'jump', 'potion', 'bag', 'map', 'quest', 'menu'];
     let html = '';
     acts.forEach((a) => {
       html += `<div class="slider-row"><label>${a}</label><button class="btn small" data-kb="${a}">${LG.Input.keyFor(a)}</button></div>`;
     });
     const p = panel(T()('keybind'), html);
+    p.dataset.page = 'settings'; // 按键设置是设置页的子页：ESC 归入设置页语义（关闭它）
     p.querySelectorAll('[data-kb]').forEach((b) => {
       b.onclick = () => {
         toast('按下新按键…');
@@ -262,6 +338,7 @@
         window.addEventListener('keydown', h);
       };
     });
+    return p;
   }
 
   /* ---------- 商店（Q41） ---------- */
@@ -403,11 +480,123 @@
 
   /* ---------- HUD 绘制（Canvas；阶段十二重做为"雕纹铭牌"风格） ----------
      坐标一律使用 CSS 像素（window.innerWidth/Height）：引擎 render() 前已
-     setTransform(DPR)，若用 canvas.width（物理像素）则 DPR≥2 时右侧/底部元素被推出屏幕。 */
+     setTransform(DPR)，若用 canvas.width（物理像素）则 DPR≥2 时右侧/底部元素被推出屏幕。
+     阶段十三：窄屏引入虚拟坐标 g.scale(U)（U=0.5@<760px）整体缩小，字号经 fs() 保底 10px。 */
   function hudDiamond(g, x, y, s) {
     g.save(); g.translate(x, y); g.rotate(Math.PI / 4);
     g.fillRect(-s / 2, -s / 2, s, s);
     g.restore();
+  }
+
+  /* ---------- HUD 热区（物理 CSS 像素；drawHUD 每帧缓存，engine 点击命中经 hudHit） ---------- */
+  const hudRects = { mode: null, settings: null, tracker: null };
+  function hudHit(c) {
+    for (const k in hudRects) {
+      const r = hudRects[k];
+      if (r && c.x >= r.x && c.x <= r.x + r.w && c.y >= r.y && c.y <= r.y + r.h) return k;
+    }
+    return null;
+  }
+
+  /* ESC（keymap.menu）：开关设置面板。
+     仅接管"无面板"与"页面类面板"（背包/地图/任务/设置，dataset.page 标记）；
+     角色创建/商店/对话等模态面板不劫持，交还给各自的关闭按钮。 */
+  function escMenu() {
+    if (curPanel && curPanel.dataset.page) { closePanel(); return; }
+    if (!curPanel) togglePage('settings', renderSettings);
+  }
+
+  /* ---------- 任务追踪条辅助数据 ---------- */
+  function regionXY(id) {
+    const rg = LG.Config.REGIONS.find((r) => r.id === id);
+    return rg ? { x: rg.cx, y: rg.cy } : null;
+  }
+  function nearestQuestNpc() { // 就近的任务 NPC（role:'quest'，营地首领/区域向导）
+    const P = LG.Player;
+    let best = null, bd = 1e9;
+    LG.NPC.list.forEach((n) => {
+      if (n.role !== 'quest') return;
+      const d = LG.U.dist(P.x, P.y, n.x, n.y);
+      if (d < bd) { bd = d; best = n; }
+    });
+    return best ? { x: best.x, y: best.y } : null;
+  }
+  function clipText(g, txt, maxw) { // 追踪条宽度有限：超宽截断
+    if (g.measureText(txt).width <= maxw) return txt;
+    let t = txt;
+    while (t.length > 1 && g.measureText(t + '…').width > maxw) t = t.slice(0, -1);
+    return t + '…';
+  }
+
+  /* ---------- 任务追踪条（目标引导，反馈"不知道干什么"） ----------
+     行1 = 任务名+进度（可提交优先显示）；无任务时提示找营地首领接取。
+     行2 = 可提交提示 / 到目标点的方向三角+距离。
+     空间引导：目标在屏内 -> 金菱形脉冲标记；在屏外 -> 视口边缘指向箭头。
+     点击追踪条打开任务面板（engine 经 hudHit('tracker') 转发）。 */
+  function drawQuestTracker(g, x, y, w, fs, U, vw, vh) {
+    const zh = LG.I18n.lang === 'zh';
+    const P = LG.Player;
+    const act = LG.Quest.active;
+    const q = act.find((a) => a.got >= a.need) || act[0] || null;
+    const ready = !!(q && q.got >= q.need);
+    let line1, tgt = null;
+    if (q) {
+      line1 = (zh ? q.zh : q.en) + '  ' + q.got + '/' + q.need;
+      if (!ready) tgt = q.target || regionXY(q.region);
+    } else {
+      line1 = T()('guide_none');
+      tgt = nearestQuestNpc();
+    }
+    const th = 48;
+    g.fillStyle = 'rgba(6,7,11,0.78)'; g.fillRect(x, y, w, th);
+    g.lineWidth = 1; g.strokeStyle = 'rgba(216,180,90,0.9)'; g.strokeRect(x + 1, y + 1, w - 2, th - 2);
+    g.textAlign = 'left';
+    g.font = fs(12) + 'px "LegendKai", sans-serif';
+    g.fillStyle = ready ? '#ffe9a8' : (q ? '#e8d9a8' : '#d8b45a');
+    g.fillText(clipText(g, line1, w - 14), x + 7, y + 19);
+    g.font = fs(10.5) + 'px "LegendKai", sans-serif';
+    if (ready) {
+      g.fillStyle = '#ffd777';
+      g.fillText(clipText(g, T()('guide_ready'), w - 14), x + 7, y + 42);
+    } else {
+      const d = tgt ? Math.round(LG.U.dist(P.x, P.y, tgt.x, tgt.y)) : 0;
+      if (tgt) { // 方向三角（世界系 x 东 y 南，与屏幕同向）
+        const ang = Math.atan2(tgt.y - P.y, tgt.x - P.x);
+        g.save(); g.translate(x + 13, y + 38); g.rotate(ang);
+        g.fillStyle = '#d8b45a';
+        g.beginPath(); g.moveTo(6, 0); g.lineTo(-4, 4.5); g.lineTo(-4, -4.5); g.closePath(); g.fill();
+        g.strokeStyle = 'rgba(0,0,0,0.6)'; g.lineWidth = 1; g.stroke();
+        g.restore();
+      }
+      g.fillStyle = '#9fb7d9';
+      g.fillText(T()('guide_dist', d), x + 24, y + 42);
+    }
+    // 空间标记：屏内金菱形脉冲 / 屏外边缘箭头（坐标 worldToScreen 为物理像素，/U 转虚拟）
+    if (tgt) {
+      const w2s = LG.Camera.worldToScreen(tgt.x, tgt.y);
+      const sz = (LG.Config.TILE * LG.Camera.zoomVal) / U;
+      const sx = w2s.x / U + sz / 2, sy = w2s.y / U + sz / 2;
+      const margin = 34;
+      const onScr = sx >= margin && sx <= vw - margin && sy >= margin && sy <= vh - margin;
+      g.save();
+      g.globalAlpha = onScr ? 0.55 + 0.45 * Math.sin(performance.now() / 240) : 0.95;
+      if (onScr) {
+        g.translate(sx, sy); g.rotate(Math.PI / 4);
+        g.strokeStyle = '#ffd777'; g.lineWidth = 2;
+        g.strokeRect(-8, -8, 16, 16);
+      } else {
+        const ang = Math.atan2(tgt.y - P.y, tgt.x - P.x);
+        g.translate(Math.max(margin, Math.min(vw - margin, sx)),
+                    Math.max(margin, Math.min(vh - margin, sy)));
+        g.rotate(ang);
+        g.fillStyle = '#ffd777';
+        g.beginPath(); g.moveTo(13, 0); g.lineTo(-8, 8); g.lineTo(-8, -8); g.closePath(); g.fill();
+        g.strokeStyle = 'rgba(0,0,0,0.7)'; g.lineWidth = 1.5; g.stroke();
+      }
+      g.restore();
+      g.globalAlpha = 1;
+    }
+    hudRects.tracker = { x: x * U, y: y * U, w: w * U, h: th * U };
   }
 
   function drawHUD() {
@@ -415,8 +604,16 @@
     const W = window.innerWidth, H = window.innerHeight;
     const s = LG.Inv.calcStats();
     const P = LG.Player;
+    /* 手机缩放（反馈"UI太大显示不全，建议缩小50%"）：以虚拟坐标绘制
+       （g.scale(U) 后所有原尺寸按 U 缩放），窄屏 U=0.5 整体缩小一半；
+       字号经 fs() 换算并保底 10 物理像素，保证小字仍可读。 */
+    const U = W < 760 ? 0.5 : (W < 1100 ? 0.75 : 1);
+    const vw = W / U, vh = H / U;
+    const fs = (px) => (U >= 1 ? px : Math.max(10, px * U) / U);
+    const coarse = window.matchMedia ? window.matchMedia('(pointer: coarse)').matches : ('ontouchstart' in window);
     g.save();
     g.imageSmoothingEnabled = false;
+    g.scale(U, U);
     g.textAlign = 'left'; g.textBaseline = 'alphabetic';
 
     /* ===== 左上：状态铭牌（四角金铆钉 / 等级章 / 血条 / 经验条 / 资源行） ===== */
@@ -434,9 +631,10 @@
     g.lineWidth = 1; g.strokeStyle = '#000'; g.strokeRect(sx - .5, sy - .5, sw + 1, sh + 1);
     g.strokeStyle = '#8a6e20'; g.strokeRect(sx + 1.5, sy + 1.5, sw - 3, sh - 3);
     g.textAlign = 'center';
-    g.fillStyle = '#9a8f70'; g.font = '9px "LegendKai", sans-serif';
-    g.fillText('LV', sx + sw / 2, sy + 14);
-    g.fillStyle = '#ffe9a8'; g.font = 'bold 22px "LegendKai", sans-serif';
+    g.fillStyle = '#9a8f70'; g.font = fs(9) + 'px "LegendKai", sans-serif';
+    // 缩小模式下 LV 基线下移 4px：小字号仍会顶出等级章上沿
+    g.fillText('LV', sx + sw / 2, sy + 14 + (U < 1 ? 4 : 0));
+    g.fillStyle = '#ffe9a8'; g.font = 'bold ' + fs(22) + 'px "LegendKai", sans-serif';
     g.fillText(String(P.level), sx + sw / 2, sy + 41);
 
     // 血条：黑框 + 红渐变 + 顶部高光 + 十段刻度 + 金内线 + 双层描边数值
@@ -453,7 +651,7 @@
     g.fillStyle = 'rgba(0,0,0,0.35)';
     for (let i = 1; i < 10; i++) g.fillRect(hbx + Math.round(hbw / 10 * i), hby, 1, hbh);
     g.lineWidth = 1; g.strokeStyle = '#d8b45a'; g.strokeRect(hbx + .5, hby + .5, hbw - 1, hbh - 1);
-    g.font = 'bold 12.5px "LegendKai", sans-serif'; g.textAlign = 'center';
+    g.font = 'bold ' + fs(12.5) + 'px "LegendKai", sans-serif'; g.textAlign = 'center';
     const hpTxt = Math.ceil(P.hp) + '/' + s.maxHp;
     g.fillStyle = 'rgba(0,0,0,0.85)'; g.fillText(hpTxt, hbx + hbw / 2 + 1, hby + 14 + 1);
     g.fillStyle = '#ffffff'; g.fillText(hpTxt, hbx + hbw / 2, hby + 14);
@@ -473,7 +671,7 @@
 
     // 资源行：银币圆章 + 数字，药水瓶 + 数字（图标替代裸文本）
     const ry = my + 68;
-    g.textAlign = 'left'; g.font = '13.5px "LegendKai", sans-serif';
+    g.textAlign = 'left'; g.font = fs(13.5) + 'px "LegendKai", sans-serif';
     g.fillStyle = '#d8b45a'; g.beginPath(); g.arc(hbx + 7, ry - 4, 5.5, 0, Math.PI * 2); g.fill();
     g.lineWidth = 1; g.strokeStyle = '#4a3a14'; g.stroke();
     g.fillStyle = '#6b5518'; g.beginPath(); g.arc(hbx + 7, ry - 4, 2.2, 0, Math.PI * 2); g.fill();
@@ -487,9 +685,9 @@
 
     /* ===== 右上：攻击模式徽章（左侧状态宝石随模式变色：绿=开 金=半 灰=关） ===== */
     const modeTxt = LG.I18n.get('attack_mode') + ':' + LG.I18n.get('mode_' + P.mode);
-    g.font = '13.5px "LegendKai", sans-serif';
+    g.font = fs(13.5) + 'px "LegendKai", sans-serif';
     const bw = Math.round(g.measureText(modeTxt).width) + 48, bh = 26;
-    const bx = W - 14 - bw, by = 14;
+    const bx = vw - 14 - bw, by = 14;
     g.fillStyle = 'rgba(6,7,11,0.78)'; g.fillRect(bx, by, bw, bh);
     g.lineWidth = 2; g.strokeStyle = '#000'; g.strokeRect(bx - 1, by - 1, bw + 2, bh + 2);
     g.lineWidth = 1; g.strokeStyle = 'rgba(216,180,90,0.9)'; g.strokeRect(bx + 1.5, by + 1.5, bw - 3, bh - 3);
@@ -498,14 +696,35 @@
     g.fillStyle = '#e8e2d0'; g.textAlign = 'left';
     g.fillText(modeTxt, bx + 32, by + 18);
 
+    /* ===== 徽章下方：设置按钮（反馈"没有设置"：游戏内此前无设置入口，手机更无按键可用） ===== */
+    const fsSet = fs(11);
+    g.font = fsSet + 'px "LegendKai", sans-serif';
+    const sbTxt = T()('settings');
+    const sbw = Math.round(g.measureText(sbTxt).width) + 18, sbh = Math.max(22, fsSet + 8);
+    const sbx = vw - 14 - sbw, sby = by + bh + 6;
+    g.fillStyle = 'rgba(6,7,11,0.78)'; g.fillRect(sbx, sby, sbw, sbh);
+    g.strokeStyle = 'rgba(216,180,90,0.9)'; g.lineWidth = 1;
+    g.strokeRect(sbx + 0.5, sby + 0.5, sbw - 1, sbh - 1);
+    g.fillStyle = '#e8d9a8'; g.textAlign = 'center';
+    g.fillText(sbTxt, sbx + sbw / 2, sby + sbh / 2 + fsSet * 0.36); // 视觉居中（CJK 基线）
+
+    /* ===== 左上铭牌下方：任务追踪条（目标引导，反馈"不知道干什么"） ===== */
+    drawQuestTracker(g, mx, my + mh + 6, mw, fs, U, vw, vh);
+
+    // 热区缓存（物理 CSS 像素；engine.handleHotkeys 经 LG.UI.hudHit 命中）
+    hudRects.mode = { x: bx * U, y: by * U, w: bw * U, h: bh * U };
+    hudRects.settings = { x: sbx * U, y: sby * U, w: sbw * U, h: sbh * U };
+
     /* ===== 底部居中：BOSS 血条（黑台 + 暗红渐变 + 金框 + 两端菱形铆） ===== */
     const boss = LG.Enemy.list.find((e) => e.isBoss && e.hp > 0);
     if (boss) {
-      const bbw = Math.min(W * 0.56, 540), bbx = Math.round(W / 2 - bbw / 2), bby = H - 62, bbh = 16;
-      g.font = '15px "LegendKai", sans-serif'; g.textAlign = 'center';
+      // 物理宽=屏宽56%（/U 还原到虚拟坐标）；粗指针设备上移避开右下触屏按钮
+      const bbw = Math.min(W * 0.56, 540) / U, bbx = Math.round((vw - bbw) / 2),
+            bby = Math.round((coarse ? H - 210 : H - 62) / U), bbh = 16;
+      g.font = fs(15) + 'px "LegendKai", sans-serif'; g.textAlign = 'center';
       const bname = LG.I18n.lang === 'zh' ? (boss.type.zh || boss.type.en) : (boss.type.en || boss.type.zh);
-      g.fillStyle = 'rgba(0,0,0,0.85)'; g.fillText(bname, W / 2 + 1, bby - 7 + 1);
-      g.fillStyle = '#ffe9a8'; g.fillText(bname, W / 2, bby - 7);
+      g.fillStyle = 'rgba(0,0,0,0.85)'; g.fillText(bname, vw / 2 + 1, bby - 7 + 1);
+      g.fillStyle = '#ffe9a8'; g.fillText(bname, vw / 2, bby - 7);
       g.fillStyle = '#000'; g.fillRect(bbx - 3, bby - 3, bbw + 6, bbh + 6);
       g.fillStyle = '#1c0d10'; g.fillRect(bbx, bby, bbw, bbh);
       const br = Math.max(0, Math.min(1, boss.hp / boss.maxHp));
@@ -524,5 +743,5 @@
   }
 
   LG.UI = { init, drawHUD, toast, panel, closePanel, togglePage, renderBag, renderStats, renderQuests,
-    renderMap, renderSettings, charCreate, dialog, tutorial, drawItemIcon };
+    renderMap, renderSettings, charCreate, dialog, tutorial, drawItemIcon, hudHit, escMenu };
 })();

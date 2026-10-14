@@ -130,11 +130,15 @@
     if (dx || dy) {
       const sp = (P.speed + P.stats.spd) * dt;
       const nx = P.x + dx * sp, ny = P.y + dy * sp;
-      // 碰撞：可走或可跳（跳跃状态可越过矮障）
-      if (LG.Terrain.walkable(nx, P.y)) P.x = nx;
-      else if (P.jumping && LG.Terrain.jumpable(nx, P.y)) P.x = nx;
-      if (LG.Terrain.walkable(P.x, ny)) P.y = ny;
-      else if (P.jumping && LG.Terrain.jumpable(P.x, ny)) P.y = ny;
+      // 碰撞：脚印盒四角检测（修复单点检测"穿过墙与海一部分"）；逐轴判定保留贴墙滑动
+      // 说明：jumpable(h=1 台地) 本就包含在可走集内，原"跳跃分支"为死代码，随脚印盒一并移除
+      if (LG.Terrain.boxPenalty(P.x, P.y) === 0) {
+        if (LG.Terrain.passableBox(nx, P.y)) P.x = nx;
+        if (LG.Terrain.passableBox(P.x, ny)) P.y = ny;
+      } else {
+        // 脱困容错：当前位置脚印已非法（旧存档/传送误差）时放行，直到回到合法位形
+        P.x = nx; P.y = ny;
+      }
       if (dx !== 0) P.facing = dx > 0 ? 1 : -1;
       // 4朝向：按主轴更新渲染朝向（斜向移动取绝对值大的轴）
       if (Math.abs(dx) > Math.abs(dy)) P.dir = dx > 0 ? 'e' : 'w';

@@ -49,6 +49,10 @@
       boss_repeat: 'BOSS可重复挑战',
       loading: '正在载入…', dead: '你已倒下', back_camp: '返回营地',
       tutorial_skip: '跳过教程', tutorial_next: '下一步',
+      // 阶段十三：主菜单拆分 + 目标引导（任务追踪条）
+      start_game: '开始游戏', quest_available: '可接任务', quest_none: '暂无任务',
+      guide_none: '找营地首领接取任务', guide_ready: '可提交，点击领取',
+      guide_dist: '{0}格',
     },
     en: {
       title: 'LEGEND',
@@ -83,6 +87,10 @@
       boss_repeat: 'Bosses repeatable',
       loading: 'Loading…', dead: 'You are down', back_camp: 'Return to camp',
       tutorial_skip: 'Skip', tutorial_next: 'Next',
+      // 阶段十三：主菜单拆分 + 目标引导（任务追踪条）
+      start_game: 'Start Game', quest_available: 'Available', quest_none: 'No quests',
+      guide_none: 'See the camp chief for quests', guide_ready: 'Ready — tap to claim',
+      guide_dist: '{0} tiles',
     },
   };
 

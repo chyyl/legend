@@ -53,12 +53,15 @@
       </div>
       <div class="menu-lore">${lore.length > 110 ? lore.slice(0, 110) + '…' : lore}</div>
       <div class="menu-btns">
-        <button class="btn primary" id="mm-lobby">${LG.I18n.get('lobby')}</button>
+        <button class="btn primary" id="mm-start">${LG.I18n.get('start_game')}</button>
+        <button class="btn" id="mm-lobby">${LG.I18n.get('lobby')}</button>
         <button class="btn" id="mm-set">${LG.I18n.get('settings')}</button>
         <button class="btn" id="mm-lang">中文 / EN</button>
       </div>
       <div class="menu-foot">${zh ? 'HTML5 Canvas · 离线可玩 · 1-4 人联机' : 'HTML5 Canvas · Offline · 1-4 Co-op'}</div>`);
     p.classList.add('menu-panel');
+    // 开始游戏 = 单人直开（不经联机大厅）；联机大厅为独立入口（拆分"开始游戏与联机大厅在一起"）
+    p.querySelector('#mm-start').onclick = () => { LG.Sound.init(); LG.Lobby.startSolo(); };
     p.querySelector('#mm-lobby').onclick = () => { LG.Sound.init(); LG.Lobby.show(); };
     p.querySelector('#mm-set').onclick = () => LG.UI.renderSettings();
     p.querySelector('#mm-lang').onclick = () => { LG.I18n.set(LG.I18n.lang === 'zh' ? 'en' : 'zh'); showMenu(); };
@@ -222,6 +225,7 @@
     once('map', () => LG.UI.togglePage('map', LG.UI.renderMap));
     once('quest', () => LG.UI.togglePage('quest', lgQuestPanel));
     once('mode', () => toggleMode());
+    once('menu', () => LG.UI.escMenu()); // ESC：游戏内开关设置面板（修复"没有设置"入口）
     once('interact', () => interactNearest());
     once('attack', () => LG.Combat.forceSwing());
 
@@ -244,9 +248,11 @@
       const btn = LG.Input.hitButton(c);
       if (btn) { doTouchButton(btn.id); return; }
     }
-    // 2) 右上角攻击模式按钮区
-    const W = window.innerWidth;
-    if (c.x > W - 130 && c.y < 40) { toggleMode(); return; }
+    // 2) HUD 右上热区（攻击模式徽章 / 设置按钮 / 任务追踪条；rect 由 drawHUD 每帧缓存）
+    const hud = LG.UI.hudHit(c);
+    if (hud === 'mode') { toggleMode(); return; }
+    if (hud === 'settings') { LG.UI.togglePage('settings', LG.UI.renderSettings); return; }
+    if (hud === 'tracker') { LG.UI.togglePage('quest', lgQuestPanel); return; }
     const w = LG.Camera.screenToWorld(c.x, c.y);
     // 3) NPC：点中则范围内直接交互，否则寻路过去自动交互（修复“点击NPC没反应”）
     const npc = LG.NPC.nearby(w.x, w.y);

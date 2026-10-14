@@ -7,6 +7,7 @@
 
    对外接口（window.LG.Lobby）：
      .show()        打开大厅面板（DOM，写入 #overlay）
+     .startSolo()   单人直开（主菜单"开始游戏"直接进游戏，不经大厅面板）
      .players       当前成员列表（含自己）
 
    事件：确认开局后 emit 'start_game' {players, host}，由 engine 接管。
@@ -38,6 +39,7 @@
         <button class="btn primary" id="lb-create">${LG.I18n.get('create_room')}</button>
         <button class="btn" id="lb-join">${LG.I18n.get('join_room')}</button>
         <button class="btn" id="lb-solo">${LG.I18n.get('start_solo')}</button>
+        <button class="btn" id="lb-set">${LG.I18n.get('settings')}</button>
       </div>
       <div id="lb-codebox" class="code-box" style="display:none">
         <div class="slider-row"><label>${LG.I18n.get('room_code')}</label>
@@ -107,6 +109,8 @@
     };
     /* 单人=1人房（Q1：单人也是联机） */
     body.querySelector('#lb-solo').onclick = () => startGame(true);
+    /* 大厅内设置入口（反馈"没有设置"：大厅此前无任何设置入口） */
+    body.querySelector('#lb-set').onclick = () => LG.UI.renderSettings();
 
     // 联机状态与新成员
     LG.U.bus.off('lobby_net');
@@ -158,8 +162,15 @@
     LG.U.bus.emit('start_game', { players: Lobby.players, host: LG.Net.isHost });
   }
 
+  /* 单人直开（主菜单"开始游戏"按钮走此入口，不经大厅面板） */
+  function startSolo() {
+    Lobby.players = [selfPlayer()];
+    startGame(true);
+  }
+
   /* 挂载公开接口（show 必须显式挂到 Lobby 对象上） */
   Lobby.show = show;
   Lobby.startGame = startGame;
+  Lobby.startSolo = startSolo;
   LG.Lobby = Lobby;
 })();

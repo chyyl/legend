@@ -181,7 +181,7 @@ html, body {
 /* ===== 主菜单（engine.showMenu）：标题画面感 ===== */
 .menu-panel { min-width: min(430px, 92vw); }
 .menu-panel h2, .menu-panel .close-x { display: none; }
-.menu-panel .pbody { max-height: none; padding: 34px 34px 22px; text-align: center; }
+.menu-panel .pbody { max-height: calc(86vh - 24px); overflow-y: auto; padding: 34px 34px 22px; text-align: center; }
 .menu-logo { margin-bottom: 6px; }
 .menu-logo::before {
   content: ''; display: block; width: 15px; height: 15px; margin: 0 auto 20px;
@@ -482,16 +482,26 @@ select.inp { cursor: pointer; }
   background: linear-gradient(90deg, transparent, var(--gold-lo), transparent);
 }
 
-/* ===== 横屏小屏（手机）下压缩面板 ===== */
+/* ===== 横屏小屏（手机）下压缩面板（反馈"UI太大显示不全，建议缩小50%"：
+     面板排版/字号压缩，触控热区仍保持 ≥44px） ===== */
 @media (max-width: 720px) {
   .panel { min-width: 0; width: 94vw; }
   .panel-bag { width: 94vw; }
-  .panel .pbody { padding: 13px 13px 15px; }
-  .menu-panel .pbody { padding: 26px 18px 18px; }
-  .logo-main { font-size: 46px; letter-spacing: 10px; text-indent: 10px; }
+  .panel h2 { font-size: 16px; letter-spacing: 4px; padding: 10px 42px 9px; }
+  .panel .pbody { padding: 11px 12px 13px; }
+  .btn { min-width: 86px; font-size: 14.5px; padding: 0 12px; letter-spacing: 1px; }
+  .btn.small { min-width: 56px; min-height: 40px; line-height: 38px; font-size: 12.5px; }
+  .menu-panel .pbody { padding: 18px 16px 14px; }
+  .menu-btns .btn { font-size: 15px; letter-spacing: 3px; margin: 7px 0; }
+  .menu-lore { margin: 12px 2px 14px; padding: 8px 5px; font-size: 12px; line-height: 1.7; }
+  .menu-logo::before { margin-bottom: 12px; }
+  .logo-main { font-size: 40px; letter-spacing: 8px; text-indent: 8px; }
+  .logo-sub { font-size: 13px; letter-spacing: 7px; text-indent: 7px; }
+  .menu-foot { margin-top: 10px; font-size: 10.5px; }
   .boot-title { font-size: 34px; letter-spacing: 8px; text-indent: 8px; }
   .boot-title::before, .boot-title::after { width: 36px; margin: 0 12px; }
   .slot { width: 46px; height: 46px; }
   .eq-row .slot { width: 46px; height: 46px; }
-  .slider-row label { width: 78px; font-size: 14px; }
+  .slider-row label { width: 74px; font-size: 13px; }
+  .item-card { font-size: 13px; padding: 7px 9px; min-height: 40px; }
 }

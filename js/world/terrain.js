@@ -7,7 +7,9 @@
    对外接口（window.LG.Terrain）：
      .generate(seed) -> 生成全图（内部缓存）
      .tileAt(x,y) -> {type, walk, jump, water, height}
-     .walkable(x,y) -> bool          玩家/敌人可走
+     .walkable(x,y) -> bool          玩家/敌人可走（单点查询）
+     .passableBox(x,y) -> bool       精灵脚印盒（1×1格四角）整体可走（碰撞用）
+     .boxPenalty(x,y) -> int         脚印盒受阻角数（0=合法；脱困容错用）
      .jumpable(x,y) -> bool          需跳跃翻越的矮障碍（Q21伪跳跃）
      .isWater(x,y) -> bool
      .regionOf(x,y) -> regionObj
@@ -255,6 +257,33 @@
   function walkable(x, y) { return tileAt(x, y).walk; }
   function jumpable(x, y) { return tileAt(x, y).jump; }
   function isWater(x, y) { const t = tileAt(x, y); return t.water; }
+
+  /* 零分配可走判定（与 tileAt().walk 同语义；脚印盒碰撞热路径每帧多次调用，
+     走 tileAt 会每调一次建一个对象，GC 压力大） */
+  function freeTile(x, y) {
+    if (!ready) return false;
+    x = x | 0; y = y | 0;
+    if (!inb(x, y)) return false;
+    const i = y * W + x;
+    return tiles[i] !== T_WATER && tiles[i] !== T_WALL && height[i] !== 2;
+  }
+
+  /* 脚印盒碰撞（修复"人物可以穿过墙与海一部分"）：
+     精灵以左上角 (x,y) 占据 [x,x+1)×[y,y+1) 一整格。旧逻辑只检测左上角单点，
+     身体可向右/下侵入相邻墙或海接近 1 格才被拦停。现检测脚印四角
+     （内缩 0.02 防止恰好压线时误判到相邻格）所辖瓦片，四角全可走才允许落位；
+     逐轴（axis 分离）调用即可保留"贴墙滑动"手感。 */
+  function boxPenalty(x, y) {
+    if (!ready) return 0;
+    const e = 0.02;
+    let bad = 0;
+    if (!freeTile(x + e, y + e)) bad++;
+    if (!freeTile(x + 1 - e, y + e)) bad++;
+    if (!freeTile(x + e, y + 1 - e)) bad++;
+    if (!freeTile(x + 1 - e, y + 1 - e)) bad++;
+    return bad;
+  }
+  function passableBox(x, y) { return boxPenalty(x, y) === 0; }
   function regionOf(x, y) {
     if (!ready || !inb(x, y)) return null; // 未生成时安全返回 null（防崩）
     return LG.Config.REGIONS[regionMap[(y | 0) * W + (x | 0)]] || null;
@@ -278,6 +307,7 @@
 
   LG.Terrain = {
     SIZE: W, generate, tileAt, heightAt, walkable, jumpable, isWater, regionOf, isMazeAt,
+    boxPenalty, passableBox,
     get ready() { return ready; },
     fog: { reveal, visible: fogVisible },
     TYPE: { GRASS: T_GRASS, DIRT: T_DIRT, SAND: T_SAND, SNOW: T_SNOW, ROCK: T_ROCK,
