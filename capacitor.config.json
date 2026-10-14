@@ -1,8 +1,7 @@
 {
   "appId": "com.legend.game",
   "appName": "LEGEND",
-  "webDir": ".",
-  "bundledWebRuntime": false,
+  "webDir": "www",
   "android": {
     "allowMixedContent": true,
     "backgroundColor": "#0b0d12",
