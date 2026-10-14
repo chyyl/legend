@@ -50,25 +50,38 @@
 
 ## 3. LG.Assets（js/core/assets.js）— 程序化像素图
 
-`tile(name)` `hero({skin,hair,hairColor,gender})` `enemy(type)` `boss(id,color)`
+`tile(name)` `groundTile(type,level,cliffS,northDelta)` `hero(opts,dir)` `enemy(type,dir)` `boss(id,color)`
 `weaponIcon(id)` `armorIcon(slot,color)` `bondIcon(id)` `chest()` —— 均返回缓存的离屏 canvas（32×32，BOSS 64×64）。
+
+- **4 朝向精灵**：`dir = 's'正面 | 'n'背面（后脑勺全发） | 'e'侧面（16列全宽非对称矩阵）`；`'w'` 由引擎水平翻转 `'e'` 生成（不重复缓存）。玩家/敌人/NPC 共用骨架；BOSS 保持正面。
+- **groundTile 2.5D 挤出烘焙**（缓存键 `gt:type:level:cliffS:northDelta`，渲染仅一次 drawImage）：
+  `level` 层级提亮（白膜 0.065×level）、`cliffS>0` 画南向崖壁带（暗面+岩缝+顶缘受光棱，每级7px 封顶2级）、
+  `northDelta>0` 顶边落影 / `<0` 顶边亮棱、水面蓝膜烘焙。崖壁画在高层瓦片自身底边内（单瓦片内完成，无跨瓦片遮挡）。
 
 ## 4. LG.Input（js/core/input.js）
 
 | 接口 | 说明 |
 |---|---|
-| `init(canvas)` | 绑定鼠标/触屏/键盘；左半屏触摸=虚拟摇杆，右半=点击 |
-| `state` | `{click, moveVec, keys, joy, pinch, wheel}`（engine 每帧读取） |
-| `consumeClick()/consumePinch()/consumeWheel()` | 消费一次性输入 |
-| `down(action)` / `keyFor(a)` / `setKey(a,code)` | Q57 按键自定义（存 LS `keymap`） |
+| `init(canvas)` | 绑定鼠标/触屏/键盘/手柄；左半屏触摸=虚拟摇杆，右半=点击；hover→`state.hover` |
+| `updateMoveVec()` | 每帧调用，合并 键盘>手柄左摇杆/十字键>虚拟摇杆 → `state.moveVec` |
+| `state` | `{click, hover, moveVec, keys, pressed[], joy, pinch, wheel, padMove, padHit}` |
+| `consumeClick()/consumePinch()/consumeWheel()` | 消费一次性输入（hover 位置直接读 `state.hover`） |
+| `takePress(code)` | 消费一次点按（keydown 即入 `pressed[]` 队列；短于一帧的点按不丢失） |
+| `padAction(action)` | 手柄按键边沿触发：`interact/block/jump/potion/mode/attack/bag/map` |
+| `touchButtons()` | 触屏 HUD 按钮几何 `[{id,x,y,r}]`（engine 命中检测+绘制共用，所见即所点） |
+| `hitButton(p)` | 命中检测（触屏按钮优先于点击移动） |
+| `down(action)` / `keyFor(a)` / `setKey(a,code)` | Q57 按键自定义（存 LS `keymap`，与默认值合并兼容旧存档） |
+
+手柄标准映射（`PAD`）：左摇杆/十字键移动，A=交互 B=格挡 X=跳跃 Y=药水 LB=切换攻击模式 RT/RB=攻击 Start=背包。
 
 ## 5. LG.Terrain（js/world/terrain.js）
 
 | 接口 | 说明 |
 |---|---|
-| `generate(seed)` | 手工框架+局部随机；含岛屿海岸线、区域基底、道路连通、迷宫、栅栏 |
+| `generate(seed)` | 手工框架+局部随机；含岛屿海岸线、台地高差（低频噪声 nHill：>0.73→2高山 / >0.63→1台地）、区域中心半径8清平、道路连通、迷宫（墙height=2/通路0）、成段矮台 |
 | `tileAt(x,y)` | `{type, height, water, walk, jump, wall}` |
-| `walkable(x,y)` / `jumpable(x,y)` / `isWater(x,y)` | 通行判定（水与墙阻挡，height=1 可跳） |
+| `heightAt(x,y)` | 原始层级 0/1/2（渲染热路径专用，不建对象；出界按0，世界边缘不画崖） |
+| `walkable(x,y)` / `jumpable(x,y)` / `isWater(x,y)` | 通行判定（水与墙阻挡，height=1 可跳，height=2 不可走） |
 | `regionOf(x,y)` | 区域归属 |
 | `fog.reveal(x,y)` / `fog.visible(x,y)` | Q17 迷宫战争迷雾 |
 | `TYPE` | 瓦片枚举 |
@@ -94,7 +107,8 @@
 - `sell(i)` → 银币；`activeBonds()` → 去重羁绊（Q29）；`calcStats()` → 综合属性（基础+装备+羁绊归一化）
 
 ### 7.3 LG.Player（js/game/player.js）
-- 只读属性：`x,y,level,exp,expTo,hp,maxHp,potions,mode,down,facing,jumping,blockUntil`
+- 只读属性：`x,y,level,exp,expTo,hp,maxHp,potions,mode,down,facing,jumping,blockUntil,dir`
+- `dir`：渲染朝向 `'s'|'n'|'e'|'w'`（移动主轴自动更新，斜向取绝对值大轴；`facing` 仅保留水平语义）
 - `spawn(x,y)` `update(dt)` `moveTo(x,y)`（A*寻路） `setMode('on'|'off'|'half')`（Q19 half=原地打不追击）
 - `gainExp(n)`（Q31 满级溢出转银币20%） `takeDamage(n)`（格挡/闪避/不死金牌判定）
 - `heal(n)` `usePotion()`（Q62） `block()`（Q23 减伤50%/2s/CD3s） `jump()`（Q21 伪跳跃）
@@ -107,6 +121,7 @@
 
 ### 7.5 LG.Combat（js/game/combat.js）
 - `init()` 订阅战斗事件；`update(dt)` 推进弹道+特效+玩家自动攻击
+- `forceSwing()` 手动攻击（J键/手柄RT）：无视"攻击模式关"，9格内有敌则索敌出击，否则朝面向空挥
 - `projectiles[]` `effects[]`（text/slash/warn/aoe，Q25 轻量反馈）
 
 ### 7.6 LG.Quest（js/game/quest.js）
@@ -116,7 +131,8 @@
 
 ### 7.7 LG.NPC（js/game/npc.js）
 - `spawnAll()` 营地6功能NPC+各区1向导（Q42）；`nearby(x,y)` `interact(npc)`（经bus通知ui开面板）
-- `list[]` `update(dt)`
+- bus 事件：`open_quests`（任务）`open_shop`（商店）`open_enhance`（强化）`open_dialog`（剧情）`open_tutorial`（教官）
+- `list[]` `update(dt)`；NPC 外观由 id 哈希稳定生成（性别/发型/发色/手持，engine.npcLook）
 
 ### 7.8 LG.Save（js/game/save.js）
 - `save(slot)` `load(slot)` `listSlots()` `remove(slot)` `exportSlot/importSlot`
@@ -124,8 +140,17 @@
 
 ### 7.9 LG.UI（js/game/ui.js）
 - `init(canvas)` `drawHUD()` `toast(msg)` `panel(title,html)` `closePanel()`
-- 五页：`renderBag() renderStats() renderQuests() renderMap() renderSettings()`（Q50）
-- `charCreate(cb)`（Q51） `dialog(npc,lines)` `tutorial()`（Q67 可跳过）
+- `togglePage(pageId, render)` —— 按键开关面板：同页再按=关闭（B/M/L 与触屏按钮走此入口；NPC 打开的面板不受影响）
+- **panel/closePanel 场景语义（阶段十二）**：`panel()` 内部开面板不算"用户关闭"（`_opening` 标志）；
+  用户在 menu 场景关掉最后一个面板（✕/语言切换/读档）时 `closePanel()` 自动回弹主菜单（`Engine.openMenu`），
+  避免场景停在 menu 却无任何入口；game 场景关闭即回游戏，无回弹。
+- `drawHUD()` 阶段十二重绘为雕纹铭牌风：四角金铆钉状态板（等级章/十段刻度血条/鎏金经验条/银币药水图标）、
+  右上攻击模式徽章（绿/金/灰宝石=开/半/关）、底部 BOSS 金框血条；坐标一律 CSS 像素（DPR≥2 下 canvas.width 会错位）
+- 五页：`renderBag() renderStats() renderQuests() renderMap() renderSettings()`（Q50，前三个 return 面板对象供 toggle 识别）
+- `renderBag()` 结构（阶段十二）：`.panel-bag` 显式 640 宽（grid auto-fill 在 shrink-to-fit 下会塌成 1 列）+
+  `.eq-col` 装备列带 `.slot-tag` 槽位标签 + `.bag-grid` 40 格 + `.item-card` 详情卡；小屏（≤720px）装备横排单行
+- `renderSettings()`：menu 场景打开时追加 `#s-back` 返回按钮（回 `Engine.openMenu`）
+- `charCreate(cb)`（Q51，预览走 `.cc-frame` 展示框、性别按钮 `.btn.on` 选中态） `dialog(npc,lines)` `tutorial()`（Q67 可跳过）
 - 地图页点击即传送（Q13）；设置含音量/亮度/按键/语言（Q49/Q57）
 
 ## 8. 联机模块
@@ -142,8 +167,21 @@
 
 ## 9. LG.Engine（js/core/engine.js）— 装配层
 
-- `start()` 主菜单；`scene` `fps`；`bindNet()`（main.js 调用）
+- `start()` 主菜单；`openMenu()` 回主菜单（UI 设置返回键/关闭回弹调用）；`scene` `fps`；`bindNet()`（main.js 调用）；`applyBrightness(v)` 亮度滤镜
+- 主菜单（阶段十二）：`.menu-panel` 标题画面结构（金属 LEGEND 立体字/lore/全宽按钮/署名）；
+  menu/lobby 场景每帧 `renderAmbience(dt)` 氛围背景（深渊渐变+金晕+70 粒飘升金尘），替代旧纯黑死屏
 - 内部职责：主循环、渲染裁剪、区域BGM切换、BOSS触发、宝箱布置、联机快照10Hz
+- 交互链路（handleHotkeys，每帧）：
+  1. 点按队列 `takePress` → 键盘动作（E=交互、J=手动攻击、Q/F/空格、B/M/L、Tab）
+  2. `padAction` → 手柄同名动作
+  3. 触屏按钮 `hitButton`（仅 `isTouchUI()` 即 pointer:coarse 设备）→ `doTouchButton`
+  4. 右上角模式按钮区（x > W-130 && y < 40）→ 切换攻击模式
+  5. 点击命中 NPC/宝箱（1.5格内）→ 范围内直接交互，否则 `moveTo` + `Engine._pending`
+  6. 其余 → 移动寻路
+- `resolvePending()`（主循环每帧）：走到 `INTERACT_RANGE=2.6`（NPC）/ `CHEST_RANGE=2.2`（宝箱）内自动交互；
+  玩家手动移动（WASD/摇杆）即取消；寻路失败（path 空且超距）提示 `unreachable`
+- 渲染辅助：`playerLook()` 本机外观+当前武器、`npcLook(n)` NPC 稳定差异化外观、
+  悬停金环/红环高亮、`[E] 交互` 头顶提示、虚拟摇杆与触屏按钮绘制
 
 ### 事件总线表（跨模块契约）
 

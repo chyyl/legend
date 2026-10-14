@@ -58,7 +58,8 @@
     regionMap = new Uint8Array(W * W);
     fog = new Uint8Array(W * W);
 
-    const nElev = makeNoise(seed, 64);      // 地势起伏
+    const nElev = makeNoise(seed, 64);      // 地势起伏（兼海岸扰动）
+    const nHill = makeNoise(seed + 3, 40);  // 台地高差（低频 -> 成片台阶，非碎点）
     const nMoist = makeNoise(seed + 7, 48); // 干湿（区分草地/沙漠/雪地）
     const rnd = LG.U.rng(seed + 99);
 
@@ -82,12 +83,12 @@
         regionMap[i] = best;
         const rg = LG.Config.REGIONS[best];
 
-        // 地势高度：0=平地 1=可跳跃矮障 2=不可翻越高山
-        const e = nElev(x, y);
+        // 地势高度（2.5D 挤出渲染的数据源）：0=平地 1=一级台地(可走，边缘可跳) 2=二级高山(不可走)
+        const e = nHill(x, y);
         let h = 0;
-        if (island > 0.86) h = 0;                 // 近海岸沙地
-        else if (e > 0.72) h = 2;                 // 高山
-        else if (e > 0.66) h = 1;                 // 矮墙/栅栏（可跳）
+        if (island > 0.86) h = 0;                 // 近海岸沙地保持平
+        else if (e > 0.73) h = 2;                 // 高山（不可走，渲染为两倍崖壁=隐形空气墙可视化）
+        else if (e > 0.63) h = 1;                 // 一级台地（阈值放低：h1 过稀则层级感不足）
 
         // 区域基底类型
         let type;
@@ -109,6 +110,8 @@
       }
     }
 
+    // 区域中心清平（防 NPC/宝箱/传送落点困在山地上，半径8格）
+    clearRegionCenters();
     // 区域间铺路（ROAD 连通），保证可达性
     buildRoads();
 
@@ -153,11 +156,11 @@
     const CELL = 10; // 迷宫单元格大小
     const R = 120;   // 迷宫半径
     const r = LG.U.rng(seed + 555);
-    // 先把区域清为墙
+    // 先把区域清为墙（墙=2级高块，渲染为挤出城墙 + 不可走）
     for (let y = rg.cy - R; y < rg.cy + R; y++)
       for (let x = rg.cx - R; x < rg.cx + R; x++) {
         const i = y * W + x;
-        if (tiles[i] !== T_WATER) { tiles[i] = T_WALL; height[i] = 0; }
+        if (tiles[i] !== T_WATER) { tiles[i] = T_WALL; height[i] = 2; }
       }
     // 回溯法挖通路
     const cols = Math.floor((2 * R) / CELL), rows = cols;
@@ -171,6 +174,7 @@
         for (let ox = 0; ox < CELL - 1; ox++) {
           const i = (y + oy) * W + (x + ox);
           tiles[i] = T_ROAD;
+          height[i] = 0; // 通路清平（墙改2级后必须同步，否则迷宫内部不可走）
         }
     }
     while (stack.length) {
@@ -189,6 +193,7 @@
         for (let k = 0; k < 2; k++) {
           const i = (wy + (dy ? k : 0)) * W + (wx + (dx ? k : 0));
           tiles[i] = T_ROAD;
+          height[i] = 0; // 打通的墙缝同样清平
         }
         carveAt(nx, ny);
         stack.push([nx, ny]);
@@ -199,12 +204,30 @@
     carveAt(cols - 1, rows - 1);
   }
 
-  /* 草地撒栅栏（可跳跃矮障碍） */
+  /* 各区域中心半径8格清平：NPC/宝箱/BOSS/传送落点周围保证是平地 */
+  function clearRegionCenters() {
+    LG.Config.REGIONS.forEach((rg) => {
+      for (let oy = -8; oy <= 8; oy++)
+        for (let ox = -8; ox <= 8; ox++) {
+          if (ox * ox + oy * oy > 64) continue;
+          const px = (rg.cx + ox) | 0, py = (rg.cy + oy) | 0;
+          if (inb(px, py)) height[py * W + px] = 0;
+        }
+    });
+  }
+
+  /* 草地撒成段矮台（3~6格连续，可跳跃翻越；遇路/水/硬地即断，不破坏道路） */
   function sprinkleFences(rnd) {
-    for (let k = 0; k < 40000; k++) {
-      const x = (rnd() * W) | 0, y = (rnd() * W) | 0;
-      const i = y * W + x;
-      if (tiles[i] === T_GRASS && height[i] === 0 && rnd() < 0.3) height[i] = 1;
+    for (let k = 0; k < 3000; k++) {
+      const x = (rnd() * (W - 8)) | 0, y = (rnd() * (W - 8)) | 0;
+      const len = 3 + ((rnd() * 4) | 0);
+      const horiz = rnd() < 0.5;
+      for (let s = 0; s < len; s++) {
+        const px = horiz ? x + s : x, py = horiz ? y : y + s;
+        const i = py * W + px;
+        if (tiles[i] === T_GRASS && height[i] === 0) height[i] = 1;
+        else break;
+      }
     }
   }
 
@@ -223,6 +246,11 @@
     const water = t === T_WATER;
     const wall = t === T_WALL;
     return { type: t, height: h, water, walk: !water && !wall && h !== 2, jump: h === 1, wall };
+  }
+  /* 渲染热路径专用：原始高度查询（不建对象，O(1)）；出界按0（世界边缘不画崖） */
+  function heightAt(x, y) {
+    if (!ready || !inb(x, y)) return 0;
+    return height[(y | 0) * W + (x | 0)];
   }
   function walkable(x, y) { return tileAt(x, y).walk; }
   function jumpable(x, y) { return tileAt(x, y).jump; }
@@ -249,7 +277,7 @@
   }
 
   LG.Terrain = {
-    SIZE: W, generate, tileAt, walkable, jumpable, isWater, regionOf, isMazeAt,
+    SIZE: W, generate, tileAt, heightAt, walkable, jumpable, isWater, regionOf, isMazeAt,
     get ready() { return ready; },
     fog: { reveal, visible: fogVisible },
     TYPE: { GRASS: T_GRASS, DIRT: T_DIRT, SAND: T_SAND, SNOW: T_SNOW, ROCK: T_ROCK,

@@ -33,10 +33,13 @@
       list.push({ ...n, x: camp.cx + n.dx, y: camp.cy + n.dy, region: camp.id, kind: 'camp' });
     });
     // 各区域一名向导 NPC（Q42）
+    // 迷宫等区域中心/偏移点可能落在墙上（墙=2级不可走），吸附到最近可走格防"站墙上不可达"
     LG.Config.REGIONS.forEach((rg) => {
       if (rg.id === 'camp') return;
+      const near = LG.Path.nearestWalkable((rg.cx + 5) | 0, (rg.cy + 5) | 0, 14);
       list.push({ id: 'guide_' + rg.id, zh: rg.zh + '向导', en: rg.en + ' Guide',
-        role: 'quest', x: rg.cx + 5, y: rg.cy + 5, region: rg.id, kind: 'region', lore: true });
+        role: 'quest', x: near ? near.x : rg.cx + 5, y: near ? near.y : rg.cy + 5,
+        region: rg.id, kind: 'region', lore: true });
     });
   }
 

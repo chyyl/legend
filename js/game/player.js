@@ -27,7 +27,8 @@
     jumpUntil: 0, jumping: false,
     path: [], moveTarget: null,
     speed: 3,                // 格/秒，基础移速
-    facing: 1,
+    facing: 1,               // 旧接口：水平朝向（战斗斩击角度用）
+    dir: 's',                // 渲染朝向：'s'正面 'n'背面 'e'东 'w'西（4朝向精灵）
     stats: null,
   };
 
@@ -135,6 +136,9 @@
       if (LG.Terrain.walkable(P.x, ny)) P.y = ny;
       else if (P.jumping && LG.Terrain.jumpable(P.x, ny)) P.y = ny;
       if (dx !== 0) P.facing = dx > 0 ? 1 : -1;
+      // 4朝向：按主轴更新渲染朝向（斜向移动取绝对值大的轴）
+      if (Math.abs(dx) > Math.abs(dy)) P.dir = dx > 0 ? 'e' : 'w';
+      else if (dy !== 0) P.dir = dy > 0 ? 's' : 'n';
       LG.Terrain.fog.reveal(P.x, P.y); // 迷宫迷雾揭示
     }
   }
@@ -157,6 +161,7 @@
     get potions() { return P.potions; }, set potions(v) { P.potions = v; },
     get mode() { return P.mode; }, get down() { return P.down; },
     get facing() { return P.facing; }, get jumping() { return P.jumping; },
+    get dir() { return P.dir; },
     get blockUntil() { return P.blockUntil; },
     get stats() { return P.stats || null },
     get path() { return P.path; },

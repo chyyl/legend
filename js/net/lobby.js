@@ -29,17 +29,17 @@
     const p = LG.UI.panel(LG.I18n.get('lobby'), '');
     const body = p.querySelector('.pbody');
     body.innerHTML = `
-      <div style="text-align:center;margin-bottom:6px;color:#9a8f70">${LG.I18n.get('players_online')}</div>
-      <div id="lobby-players" style="text-align:center;min-height:72px"></div>
+      <div class="lobby-cap">${LG.I18n.get('players_online')}</div>
+      <div id="lobby-players" class="lobby-grid"></div>
       <div class="slider-row"><label>${LG.I18n.get('difficulty')}</label>
         <input type="range" id="lobby-diff" min="0" max="2" step="0.1" value="${LG.Net.difficulty}">
         <span class="val" id="lobby-diff-v">${LG.Net.difficulty.toFixed(1)}</span></div>
-      <div style="text-align:center;margin-top:8px">
+      <div class="btn-col">
         <button class="btn primary" id="lb-create">${LG.I18n.get('create_room')}</button>
         <button class="btn" id="lb-join">${LG.I18n.get('join_room')}</button>
         <button class="btn" id="lb-solo">${LG.I18n.get('start_solo')}</button>
       </div>
-      <div id="lb-codebox" style="margin-top:10px;display:none">
+      <div id="lb-codebox" class="code-box" style="display:none">
         <div class="slider-row"><label>${LG.I18n.get('room_code')}</label>
           <input class="inp" id="lb-code" readonly></div>
         <div style="text-align:center">
@@ -49,8 +49,7 @@
         <div class="slider-row" id="lb-ansrow" style="display:none"><label>${LG.I18n.get('paste')}</label>
           <input class="inp" id="lb-answer" placeholder="${LG.I18n.get('enter_code')}"></div>
       </div>
-      <div style="text-align:center;margin-top:8px;color:#9a8f70;font-size:13px">
-        ${LG.Config.LORE[LG.I18n.lang].slice(0, 60)}…</div>`;
+      <div class="lobby-lore">${LG.Config.LORE[LG.I18n.lang].slice(0, 60)}…</div>`;
 
     renderPlayers();
     // 难度滑块（Q33 连续0-2）
@@ -139,14 +138,14 @@
     box.innerHTML = '';
     Lobby.players.forEach((pl, i) => {
       const d = document.createElement('div');
-      d.style.cssText = 'display:inline-block;text-align:center;margin:4px;vertical-align:top';
+      d.className = 'pl-card';
       const cv = document.createElement('canvas');
       cv.width = 32; cv.height = 32;
-      cv.style.cssText = 'image-rendering:pixelated;width:48px;height:48px;background:#10131a;border:1px solid #4a5064';
+      cv.className = 'pl-face';
       const g = cv.getContext('2d'); g.imageSmoothingEnabled = false;
       g.drawImage(LG.Assets.hero(pl.look || {}), 0, 0, 32, 32);
       const nm = document.createElement('div');
-      nm.style.cssText = 'font-size:12px;color:#d8b45a';
+      nm.className = 'pl-name';
       nm.textContent = pl.name + (i === 0 ? '★' : '');
       d.appendChild(cv); d.appendChild(nm);
       box.appendChild(d);

@@ -24,6 +24,7 @@
 
   /* 在区域内生成敌人（数量=密度×难度，Q63 线性） */
   function spawnRegion(region) {
+    if (region.id === 'camp') return; // 营地是安全枢纽（NPC 聚落，Q42），不刷敌人
     const base = 18; // 每区域基础敌人数
     const n = Math.round(base * LG.Config.DIFFICULTY.density(diff) * (1 + region.lv * 0.1));
     for (let i = 0; i < n; i++) {
@@ -52,7 +53,7 @@
       state: 'idle',            // idle | chase | attack
       atkCd: 0, skillCd: 0,
       kind: type.elite ? 'elite' : 'normal',
-      facing: -1, phase: 0,
+      facing: -1, phase: 0, dir: 's',
     };
     list.push(e);
     return e;
@@ -73,7 +74,7 @@
       dmg: Math.round(base.dmg * dmgMul * scale),
       speed: 0.8, range: 3, aspd: 1.2, aggro: 12,
       state: 'idle', atkCd: 0, skillCd: 3, kind: 'boss',
-      facing: -1, phase: 0, isBoss: true,
+      facing: -1, phase: 0, isBoss: true, dir: 's',
     };
     list.push(e);
     LG.Sound.play('boss');
@@ -91,6 +92,8 @@
       // 固定型：不移动，仅在射程内攻击（Q73 远程弹幕+范围预警）
       if (e.type.move === 'fixed') {
         if (d <= e.range && !LG.Player.down) {
+          // 朝向玩家（4朝向精灵用）
+          e.dir = Math.abs(px - e.x) > Math.abs(py - e.y) ? (px > e.x ? 'e' : 'w') : (py > e.y ? 's' : 'n');
           e.atkCd -= dt;
           if (e.atkCd <= 0) {
             e.atkCd = 1 / e.aspd;
@@ -111,6 +114,7 @@
         if (LG.Terrain.walkable(nx, e.y)) e.x = nx;
         if (LG.Terrain.walkable(e.x, ny)) e.y = ny;
         e.facing = px > e.x ? 1 : -1;
+        e.dir = Math.abs(px - e.x) > Math.abs(py - e.y) ? (px > e.x ? 'e' : 'w') : (py > e.y ? 's' : 'n');
         // 近身攻击
         if (d <= e.range) {
           e.atkCd -= dt;
@@ -134,6 +138,7 @@
         const sp = e.speed * dt;
         e.x += ((e.home.x - e.x) / hd) * sp;
         e.y += ((e.home.y - e.y) / hd) * sp;
+        e.dir = Math.abs(e.home.x - e.x) > Math.abs(e.home.y - e.y) ? (e.home.x > e.x ? 'e' : 'w') : (e.home.y > e.y ? 's' : 'n');
         e.state = 'idle';
       }
     }

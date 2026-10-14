@@ -31,7 +31,9 @@
     LG.U.bus.on('levelup', (lv) => toast(T()('level') + ' ' + lv + '!'));
     LG.U.bus.on('open_shop', openShop);
     LG.U.bus.on('open_enhance', openEnhance);
+    LG.U.bus.on('open_quests', () => renderQuests()); // 任务 NPC（此前事件未绑定，点击无反应）
     LG.U.bus.on('open_dialog', ({ npc, lines }) => dialog(npc, lines));
+    LG.U.bus.on('open_tutorial', () => tutorial());   // 教官 NPC（npc.js 发的是单数形式）
     LG.U.bus.on('open_tutorials', () => tutorial());
     LG.U.bus.on('quest_ready', (q) => toast((LG.I18n.lang === 'zh' ? '任务可提交：' : 'Quest ready: ') + (q.zh || q.en)));
     LG.U.bus.on('player_down', () => {
@@ -50,8 +52,9 @@
 
   /* ---------- 通用面板 ---------- */
   let curPanel = null;
+  let _opening = false; // panel() 内部开面板时置位：换面板不算"用户关闭"，不回弹菜单
   function panel(title, bodyHTML) {
-    closePanel();
+    _opening = true; closePanel(); _opening = false;
     const p = document.createElement('div');
     p.className = 'panel';
     p.innerHTML = `<span class="close-x">✕</span><h2>${title}</h2><div class="pbody">${bodyHTML}</div>`;
@@ -60,30 +63,49 @@
     curPanel = p;
     return p;
   }
-  function closePanel() { if (curPanel) { curPanel.remove(); curPanel = null; } }
+  function closePanel() {
+    if (!curPanel) return;
+    const wasMenuPanel = curPanel.classList.contains('menu-panel');
+    curPanel.remove(); curPanel = null;
+    if (_opening) return;
+    // 菜单场景下最后一个面板被关闭（✕/语言切换等）→ 回弹主菜单，
+    // 否则场景停在 menu 却没有任何可点入口（阶段十二修复"关掉设置后卡死"）
+    if (!wasMenuPanel && !document.querySelector('.menu-panel')
+        && LG.Engine && LG.Engine.scene === 'menu') LG.Engine.openMenu();
+  }
+  /* 按键开关面板：同页再按 = 关闭（B/M/L 快捷键与触屏按钮用；NPC 打开不受影响） */
+  function togglePage(pageId, render) {
+    if (curPanel && curPanel.dataset.page === pageId) { closePanel(); return; }
+    const p = render();
+    if (p) p.dataset.page = pageId;
+  }
 
-  /* ---------- 背包页（Q50 五页之一） ---------- */
+  /* ---------- 背包页（Q50 五页之一；阶段十二：装备列带标签 + 行囊网格 + 详情卡） ---------- */
   function renderBag() {
     const p = panel(T()('bag'), '');
+    p.classList.add('panel-bag'); // 显式宽度：grid auto-fill 在 shrink-to-fit 面板内会按 max-content 只算出 1 列
     const body = p.querySelector('.pbody');
-    // 装备槽展示
-    let eq = '<div style="text-align:center">';
-    LG.Config.ARMOR_SLOTS.concat([{ id: 'weapon', zh: '武器', en: 'Weapon' }]).forEach((sl) => {
+    const zh = LG.I18n.lang === 'zh';
+    // 左列：装备槽 + 槽位文字标签（此前 4+1 孤立排布、分不清槽位）
+    let eq = '<div class="eq-col">';
+    [{ id: 'weapon', zh: '武器', en: 'Weapon' }].concat(LG.Config.ARMOR_SLOTS).forEach((sl) => {
       const it = LG.Inv.equip[sl.id];
-      eq += `<div class="slot" data-q="${it ? it.quality : ''}" title="${sl.zh}" data-eqslot="${sl.id}">`;
+      const tag = zh ? sl.zh : (sl.en || sl.id);
+      eq += `<div class="eq-row"><div class="slot" data-q="${it ? it.quality : ''}" title="${tag}" data-eqslot="${sl.id}">`;
       if (it) eq += `<canvas width="32" height="32"></canvas><span class="lv">${it.lv}</span>`;
-      eq += `</div>`;
+      eq += `</div><span class="slot-tag">${tag}</span></div>`;
     });
     eq += '</div>';
-    // 背包格子
-    let bag = '<div style="margin-top:8px">';
+    // 右区：行囊计数 + 40 格网格 + 物品详情卡（替代原先右下空白）
+    const used = LG.Inv.bag.filter(Boolean).length;
+    let bag = `<div class="bag-right"><div class="bag-cap">${T()('bag')} ${used}/40</div><div class="bag-grid">`;
     LG.Inv.bag.forEach((it, i) => {
       bag += `<div class="slot" data-q="${it ? it.quality : ''}" data-bag="${i}">`;
       if (it) bag += `<canvas width="32" height="32"></canvas><span class="lv">${it.lv}</span>`;
       bag += `</div>`;
     });
-    bag += '</div><div id="item-info" style="margin-top:8px;min-height:40px"></div>';
-    body.innerHTML = eq + bag;
+    bag += '</div><div id="item-info" class="item-card"></div></div>';
+    body.innerHTML = `<div class="bag-wrap">${eq}${bag}</div>`;
     // 绘制物品图标
     body.querySelectorAll('[data-bag]').forEach((el) => {
       const it = LG.Inv.bag[+el.dataset.bag];
@@ -95,6 +117,7 @@
       if (it) drawItemIcon(el.querySelector('canvas'), it);
       el.onclick = () => { if (it && LG.Inv.unequip(el.dataset.eqslot)) { renderBag(); } };
     });
+    return p; // 供 togglePage 识别页面（B键再按关闭）
   }
   function drawItemIcon(cv, it) {
     const g = cv.getContext('2d'); g.imageSmoothingEnabled = false;
@@ -214,6 +237,15 @@
     p.querySelector('#s-key').onclick = () => renderKeybind();
     p.querySelector('#s-save').onclick = () => { LG.Save.save(1); toast('已保存'); };
     p.querySelector('#s-load').onclick = () => { LG.Save.load(1); toast('已读取'); closePanel(); };
+    // 主菜单打开的设置：给一个明确的"返回"入口（小屏用户不依赖右上角 ✕）
+    if (LG.Engine && LG.Engine.scene === 'menu') {
+      const back = document.createElement('button');
+      back.className = 'btn primary'; back.id = 's-back';
+      back.textContent = LG.I18n.lang === 'zh' ? '返回' : 'Back';
+      back.style.cssText = 'display:block;margin:12px auto 0;min-width:160px';
+      back.onclick = () => LG.Engine.openMenu();
+      p.querySelector('.pbody').appendChild(back);
+    }
     return p;
   }
   function renderKeybind() {
@@ -323,7 +355,7 @@
   /* ---------- 角色创建（Q51） ---------- */
   function charCreate(cb) {
     const p = panel(T()('create_hero'), `
-      <div style="text-align:center;margin-bottom:8px"><canvas id="cc-prev" width="64" height="64" style="image-rendering:pixelated;width:96px;height:96px"></canvas></div>
+      <div style="text-align:center;margin-bottom:6px"><div class="cc-frame"><canvas id="cc-prev" width="64" height="64" style="image-rendering:pixelated;width:96px;height:96px"></canvas></div></div>
       <div class="slider-row"><label>${T()('name')}</label><input class="inp" id="cc-name" maxlength="8" value="冒险者"></div>
       <div class="slider-row"><label>${T()('gender')}</label>
         <button class="btn small" id="cc-m">${T()('male')}</button><button class="btn small" id="cc-f">${T()('female')}</button></div>
@@ -334,14 +366,25 @@
       </select></div>
       <div style="text-align:center;margin-top:10px"><button class="btn primary" id="cc-ok">${T()('confirm')}</button></div>`);
     const look = { gender: 'M', hairColor: '#3a2a1a', skin: '#e0b090' };
+    const wpnSel = p.querySelector('#cc-wpn');
     const prev = p.querySelector('#cc-prev');
     function redraw() {
+      // 预览跟随所选武器（手持武器外观，Q22/Q51）
+      look.weaponKind = (LG.Config.WEAPONS.find((w) => w.id === wpnSel.value) || {}).kind;
       const g = prev.getContext('2d'); g.imageSmoothingEnabled = false; g.clearRect(0, 0, 64, 64);
       g.drawImage(LG.Assets.hero(look), 0, 0, 64, 64);
     }
-    redraw();
-    p.querySelector('#cc-m').onclick = () => { look.gender = 'M'; redraw(); };
-    p.querySelector('#cc-f').onclick = () => { look.gender = 'F'; redraw(); };
+    // 性别按钮带选中态（.btn.on 高亮当前选择；不用 .primary 以免语义混淆）
+    function setG(v) {
+      look.gender = v;
+      p.querySelector('#cc-m').classList.toggle('on', v === 'M');
+      p.querySelector('#cc-f').classList.toggle('on', v === 'F');
+      redraw();
+    }
+    wpnSel.onchange = redraw;
+    p.querySelector('#cc-m').onclick = () => setG('M');
+    p.querySelector('#cc-f').onclick = () => setG('F');
+    setG('M'); // 初始选中男（与 look 默认一致）
     p.querySelector('#cc-hair').oninput = (e) => { look.hairColor = e.target.value; redraw(); };
     p.querySelector('#cc-skin').oninput = (e) => { look.skin = e.target.value; redraw(); };
     p.querySelector('#cc-ok').onclick = () => {
@@ -358,44 +401,128 @@
     };
   }
 
-  /* ---------- HUD 绘制（Canvas） ---------- */
+  /* ---------- HUD 绘制（Canvas；阶段十二重做为"雕纹铭牌"风格） ----------
+     坐标一律使用 CSS 像素（window.innerWidth/Height）：引擎 render() 前已
+     setTransform(DPR)，若用 canvas.width（物理像素）则 DPR≥2 时右侧/底部元素被推出屏幕。 */
+  function hudDiamond(g, x, y, s) {
+    g.save(); g.translate(x, y); g.rotate(Math.PI / 4);
+    g.fillRect(-s / 2, -s / 2, s, s);
+    g.restore();
+  }
+
   function drawHUD() {
     const g = canvas.getContext('2d');
-    const W = canvas.width, H = canvas.height;
+    const W = window.innerWidth, H = window.innerHeight;
     const s = LG.Inv.calcStats();
-    const scale = window.devicePixelRatio > 1 ? 1 : 1;
+    const P = LG.Player;
     g.save();
-    // 血条（左上）
-    const bw = 180, bh = 14, bx = 12, by = 12;
-    g.fillStyle = '#222'; g.fillRect(bx, by, bw, bh);
-    g.fillStyle = '#c0392b';
-    g.fillRect(bx, by, bw * Math.max(0, LG.Player.hp / s.maxHp), bh);
-    g.strokeStyle = '#000'; g.strokeRect(bx, by, bw, bh);
-    g.fillStyle = '#fff'; g.font = '11px sans-serif'; g.textAlign = 'left';
-    g.fillText(`${Math.round(LG.Player.hp)}/${s.maxHp}`, bx + 4, by + 11);
-    // 经验条（血条下）
-    g.fillStyle = '#222'; g.fillRect(bx, by + bh + 2, bw, 6);
-    g.fillStyle = '#2ecc71';
-    g.fillRect(bx, by + bh + 2, bw * (LG.Player.expTo ? LG.Player.exp / LG.Player.expTo : 1), 6);
-    // 等级/银币/药水
+    g.imageSmoothingEnabled = false;
+    g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+
+    /* ===== 左上：状态铭牌（四角金铆钉 / 等级章 / 血条 / 经验条 / 资源行） ===== */
+    const mx = 14, my = 14, mw = 252, mh = 78;
+    g.fillStyle = 'rgba(6,7,11,0.78)'; g.fillRect(mx, my, mw, mh);
+    g.lineWidth = 2; g.strokeStyle = '#000'; g.strokeRect(mx - 1, my - 1, mw + 2, mh + 2);
+    g.lineWidth = 1; g.strokeStyle = 'rgba(216,180,90,0.9)'; g.strokeRect(mx + 2.5, my + 2.5, mw - 5, mh - 5);
     g.fillStyle = '#d8b45a';
-    g.fillText(`Lv${LG.Player.level}  ${LG.Inv.silver}银  药${LG.Player.potions}`, bx, by + bh + 26);
-    // 攻击模式（右上）
-    g.fillStyle = '#000a'; g.fillRect(W - 130, 10, 120, 28);
-    g.fillStyle = '#e8e2d0'; g.textAlign = 'center';
-    g.fillText('模式:' + LG.Player.mode, W - 70, 28);
-    // BOSS 血条（底部居中）
+    hudDiamond(g, mx + 3, my + 3, 5); hudDiamond(g, mx + mw - 3, my + 3, 5);
+    hudDiamond(g, mx + 3, my + mh - 3, 5); hudDiamond(g, mx + mw - 3, my + mh - 3, 5);
+
+    // 等级章
+    const sx = mx + 12, sy = my + 15, sw = 50, sh = 48;
+    g.fillStyle = '#10131b'; g.fillRect(sx, sy, sw, sh);
+    g.lineWidth = 1; g.strokeStyle = '#000'; g.strokeRect(sx - .5, sy - .5, sw + 1, sh + 1);
+    g.strokeStyle = '#8a6e20'; g.strokeRect(sx + 1.5, sy + 1.5, sw - 3, sh - 3);
+    g.textAlign = 'center';
+    g.fillStyle = '#9a8f70'; g.font = '9px "LegendKai", sans-serif';
+    g.fillText('LV', sx + sw / 2, sy + 14);
+    g.fillStyle = '#ffe9a8'; g.font = 'bold 22px "LegendKai", sans-serif';
+    g.fillText(String(P.level), sx + sw / 2, sy + 41);
+
+    // 血条：黑框 + 红渐变 + 顶部高光 + 十段刻度 + 金内线 + 双层描边数值
+    const hbx = mx + 74, hbw = mw - 74 - 14, hby = my + 15, hbh = 20;
+    g.fillStyle = '#000'; g.fillRect(hbx - 2, hby - 2, hbw + 4, hbh + 4);
+    g.fillStyle = '#2a1216'; g.fillRect(hbx, hby, hbw, hbh);
+    const ratio = Math.max(0, Math.min(1, P.hp / s.maxHp));
+    if (ratio > 0) {
+      const hgd = g.createLinearGradient(0, hby, 0, hby + hbh);
+      hgd.addColorStop(0, '#e8564a'); hgd.addColorStop(0.45, '#c0392b'); hgd.addColorStop(1, '#7e1a16');
+      g.fillStyle = hgd; g.fillRect(hbx, hby, hbw * ratio, hbh);
+      g.fillStyle = 'rgba(255,255,255,0.26)'; g.fillRect(hbx, hby + 1, hbw * ratio, 3);
+    }
+    g.fillStyle = 'rgba(0,0,0,0.35)';
+    for (let i = 1; i < 10; i++) g.fillRect(hbx + Math.round(hbw / 10 * i), hby, 1, hbh);
+    g.lineWidth = 1; g.strokeStyle = '#d8b45a'; g.strokeRect(hbx + .5, hby + .5, hbw - 1, hbh - 1);
+    g.font = 'bold 12.5px "LegendKai", sans-serif'; g.textAlign = 'center';
+    const hpTxt = Math.ceil(P.hp) + '/' + s.maxHp;
+    g.fillStyle = 'rgba(0,0,0,0.85)'; g.fillText(hpTxt, hbx + hbw / 2 + 1, hby + 14 + 1);
+    g.fillStyle = '#ffffff'; g.fillText(hpTxt, hbx + hbw / 2, hby + 14);
+
+    // 经验条（鎏金渐变）
+    const ey = my + 41, eh = 8;
+    g.fillStyle = '#000'; g.fillRect(hbx - 1, ey - 1, hbw + 2, eh + 2);
+    g.fillStyle = '#0e1119'; g.fillRect(hbx, ey, hbw, eh);
+    const xr = P.expTo ? Math.max(0, Math.min(1, P.exp / P.expTo)) : 0;
+    if (xr > 0) {
+      const egd = g.createLinearGradient(0, ey, 0, ey + eh);
+      egd.addColorStop(0, '#ffe9a8'); egd.addColorStop(1, '#8a6e20');
+      g.fillStyle = egd; g.fillRect(hbx, ey, hbw * xr, eh);
+    }
+    g.lineWidth = 1; g.strokeStyle = 'rgba(216,180,90,0.55)';
+    g.strokeRect(hbx + .5, ey + .5, hbw - 1, eh - 1);
+
+    // 资源行：银币圆章 + 数字，药水瓶 + 数字（图标替代裸文本）
+    const ry = my + 68;
+    g.textAlign = 'left'; g.font = '13.5px "LegendKai", sans-serif';
+    g.fillStyle = '#d8b45a'; g.beginPath(); g.arc(hbx + 7, ry - 4, 5.5, 0, Math.PI * 2); g.fill();
+    g.lineWidth = 1; g.strokeStyle = '#4a3a14'; g.stroke();
+    g.fillStyle = '#6b5518'; g.beginPath(); g.arc(hbx + 7, ry - 4, 2.2, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#e8d9a8'; g.fillText(String(LG.Inv.silver), hbx + 18, ry);
+    const ptx = hbx + 120; // 药水瓶：瓶颈 + 瓶身 + 高光
+    g.fillStyle = '#8e2020'; g.fillRect(ptx + 3, ry - 15, 4, 4);
+    g.fillStyle = '#c0392b'; g.fillRect(ptx, ry - 11, 10, 11);
+    g.fillStyle = '#e2685e'; g.fillRect(ptx + 1.5, ry - 9.5, 3, 5);
+    g.lineWidth = 1; g.strokeStyle = '#000'; g.strokeRect(ptx + .5, ry - 10.5, 9, 10);
+    g.fillStyle = '#e8d9a8'; g.fillText(String(P.potions), ptx + 15, ry);
+
+    /* ===== 右上：攻击模式徽章（左侧状态宝石随模式变色：绿=开 金=半 灰=关） ===== */
+    const modeTxt = LG.I18n.get('attack_mode') + ':' + LG.I18n.get('mode_' + P.mode);
+    g.font = '13.5px "LegendKai", sans-serif';
+    const bw = Math.round(g.measureText(modeTxt).width) + 48, bh = 26;
+    const bx = W - 14 - bw, by = 14;
+    g.fillStyle = 'rgba(6,7,11,0.78)'; g.fillRect(bx, by, bw, bh);
+    g.lineWidth = 2; g.strokeStyle = '#000'; g.strokeRect(bx - 1, by - 1, bw + 2, bh + 2);
+    g.lineWidth = 1; g.strokeStyle = 'rgba(216,180,90,0.9)'; g.strokeRect(bx + 1.5, by + 1.5, bw - 3, bh - 3);
+    g.fillStyle = P.mode === 'on' ? '#7ed957' : (P.mode === 'half' ? '#d8b45a' : '#8a8f9e');
+    hudDiamond(g, bx + 17, by + bh / 2, 9);
+    g.fillStyle = '#e8e2d0'; g.textAlign = 'left';
+    g.fillText(modeTxt, bx + 32, by + 18);
+
+    /* ===== 底部居中：BOSS 血条（黑台 + 暗红渐变 + 金框 + 两端菱形铆） ===== */
     const boss = LG.Enemy.list.find((e) => e.isBoss && e.hp > 0);
     if (boss) {
-      const bbw = W * 0.5, bbx = W / 2 - bbw / 2, bby = H - 40;
-      g.fillStyle = '#222'; g.fillRect(bbx, bby, bbw, 16);
-      g.fillStyle = '#8e44ad'; g.fillRect(bbx, bby, bbw * (boss.hp / boss.maxHp), 16);
-      g.strokeStyle = '#000'; g.strokeRect(bbx, bby, bbw, 16);
-      g.fillStyle = '#fff'; g.fillText(boss.type.zh || boss.type.en, W / 2, bby + 12);
+      const bbw = Math.min(W * 0.56, 540), bbx = Math.round(W / 2 - bbw / 2), bby = H - 62, bbh = 16;
+      g.font = '15px "LegendKai", sans-serif'; g.textAlign = 'center';
+      const bname = LG.I18n.lang === 'zh' ? (boss.type.zh || boss.type.en) : (boss.type.en || boss.type.zh);
+      g.fillStyle = 'rgba(0,0,0,0.85)'; g.fillText(bname, W / 2 + 1, bby - 7 + 1);
+      g.fillStyle = '#ffe9a8'; g.fillText(bname, W / 2, bby - 7);
+      g.fillStyle = '#000'; g.fillRect(bbx - 3, bby - 3, bbw + 6, bbh + 6);
+      g.fillStyle = '#1c0d10'; g.fillRect(bbx, bby, bbw, bbh);
+      const br = Math.max(0, Math.min(1, boss.hp / boss.maxHp));
+      if (br > 0) {
+        const bgd = g.createLinearGradient(0, bby, 0, bby + bbh);
+        bgd.addColorStop(0, '#d3433a'); bgd.addColorStop(1, '#6e1414');
+        g.fillStyle = bgd; g.fillRect(bbx, bby, bbw * br, bbh);
+        g.fillStyle = 'rgba(255,255,255,0.2)'; g.fillRect(bbx, bby + 1, bbw * br, 3);
+      }
+      g.lineWidth = 1; g.strokeStyle = '#d8b45a'; g.strokeRect(bbx + .5, bby + .5, bbw - 1, bbh - 1);
+      g.fillStyle = '#d8b45a';
+      hudDiamond(g, bbx - 4, bby + bbh / 2, 9);
+      hudDiamond(g, bbx + bbw + 4, bby + bbh / 2, 9);
     }
     g.restore();
   }
 
-  LG.UI = { init, drawHUD, toast, panel, closePanel, renderBag, renderStats, renderQuests,
+  LG.UI = { init, drawHUD, toast, panel, closePanel, togglePage, renderBag, renderStats, renderQuests,
     renderMap, renderSettings, charCreate, dialog, tutorial, drawItemIcon };
 })();

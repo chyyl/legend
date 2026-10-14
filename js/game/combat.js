@@ -77,11 +77,13 @@
     return (LG.Net && LG.Net.difficulty) || LG.Config.DIFFICULTY.default;
   }
 
-  /* 玩家攻击：按武器形态（Q22）+ 攻击模式（Q19/Q24） */
-  let atkCd = 0;
+  /* 玩家攻击：按武器形态（Q22）+ 攻击模式（Q19/Q24）
+     manual：手动攻击（J键/手柄RT）置位后无视“模式关”，空挥或朝最近敌靠近 */
+  let atkCd = 0, manual = false;
+  function forceSwing() { manual = true; atkCd = 0; }
   function playerAttack(dt) {
     const P = LG.Player;
-    if (P.down || P.mode === 'off') return;
+    if (P.down || (P.mode === 'off' && !manual)) return;
     const s = P.stats;
     if (!s) return; // 首帧防御：stats 未初始化时跳过
     const wpn = LG.Inv.equip.weapon;
@@ -95,13 +97,33 @@
       const d = LG.U.dist(P.x, P.y, e.x, e.y);
       if (d < td && d <= range) { td = d; target = e; }
     }
-    if (!target) return;
+    if (!target) {
+      // 手动攻击（J键/手柄RT）：9格内有敌则走过去，否则朝面向方向空挥
+      if (manual) {
+        manual = false;
+        let near = null, nd = 9;
+        for (const e of LG.Enemy.list) {
+          if (e.hp <= 0) continue;
+          const d = LG.U.dist(P.x, P.y, e.x, e.y);
+          if (d < nd) { nd = d; near = e; }
+        }
+        if (near && P.mode !== 'off') P.moveTo(near.x, near.y);
+        else {
+          // 空挥：斩击弧朝当前朝向（4方向）
+          const sang = P.dir === 'n' ? -Math.PI / 2 : P.dir === 's' ? Math.PI / 2 : P.dir === 'e' ? 0 : Math.PI;
+          effects.push({ x: P.x, y: P.y, t: 0, life: 0.15, type: 'slash', ang: sang, r: range });
+          atkCd = 1 / (s.aspd || 1);
+        }
+      }
+      return;
+    }
     // half 模式不追击（已在原地射程内才打）；on 模式可朝目标微移
     if (P.mode === 'on' && td > range * 0.9 && !P.path.length) P.moveTo(target.x, target.y);
 
     atkCd -= dt;
     if (atkCd > 0) return;
     atkCd = 1 / (s.aspd || 1);
+    manual = false; // 本次出手由自动索敌完成
 
     // 伤害（含暴击/三倍暴击）
     let dmg = s.dmg;
@@ -163,5 +185,5 @@
     }
   }
 
-  LG.Combat = { init, update, projectiles, effects };
+  LG.Combat = { init, update, projectiles, effects, forceSwing };
 })();

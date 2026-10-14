@@ -4,18 +4,20 @@
    职责：装配所有模块并驱动游戏：
      1) 场景：mainmenu -> lobby -> game（含暂停/菜单覆盖）
      2) 渲染：地形视口裁剪 / 实体 / 弹道 / 特效 / 迷雾 / HUD
-     3) 交互：点击移动与交互、快捷键、移动HUD按钮、区域检测、宝箱、BOSS触发
+     3) 交互：点击移动与交互（点远处 NPC/宝箱自动走过去）、键盘/手柄/触屏按钮、
+        悬停高亮与交互提示、区域检测、宝箱、BOSS触发
      4) 联机：房主世界快照广播、客户端输入上报、远端玩家渲染
 
    对外接口（window.LG.Engine）：
      .start() 进入主菜单；.running
+     .applyBrightness(v) 亮度滤镜；.bindNet() 绑定联机事件（main.js 调用）
 
    依赖：所有模块（唯一允许直接引用各模块的装配层）。
    ========================================================================== */
 (function () {
   'use strict';
   const LG = (window.LG = window.LG || {});
-  const Engine = { running: false, scene: 'menu', fps: 60, _lastRegion: null, _chests: [], _bossSpawned: {} };
+  const Engine = { running: false, scene: 'menu', fps: 60, _lastRegion: null, _chests: [], _bossSpawned: {}, _pending: null };
 
   let canvas, g, DPR = 1;
   let lastT = 0, acc = 0, frames = 0, fpsT = 0;
@@ -39,19 +41,60 @@
     requestAnimationFrame(loop);
   }
 
-  /* ================= 主菜单 ================= */
+  /* ================= 主菜单（阶段十二：标题画面化） ================= */
   function showMenu() {
     Engine.scene = 'menu';
-    const p = LG.UI.panel(LG.I18n.get('title'), `
-      <div style="text-align:center;color:#9a8f70;font-size:14px;margin-bottom:10px">${LG.Config.LORE[LG.I18n.lang].slice(0, 90)}…</div>
-      <div style="text-align:center">
+    const zh = LG.I18n.lang === 'zh';
+    const lore = LG.Config.LORE[LG.I18n.lang] || '';
+    const p = LG.UI.panel('', `
+      <div class="menu-logo">
+        <div class="logo-main">LEGEND</div>
+        <div class="logo-sub">${zh ? '· 传 奇 ·' : '· CHRONICLES ·'}</div>
+      </div>
+      <div class="menu-lore">${lore.length > 110 ? lore.slice(0, 110) + '…' : lore}</div>
+      <div class="menu-btns">
         <button class="btn primary" id="mm-lobby">${LG.I18n.get('lobby')}</button>
         <button class="btn" id="mm-set">${LG.I18n.get('settings')}</button>
         <button class="btn" id="mm-lang">中文 / EN</button>
-      </div>`);
+      </div>
+      <div class="menu-foot">${zh ? 'HTML5 Canvas · 离线可玩 · 1-4 人联机' : 'HTML5 Canvas · Offline · 1-4 Co-op'}</div>`);
+    p.classList.add('menu-panel');
     p.querySelector('#mm-lobby').onclick = () => { LG.Sound.init(); LG.Lobby.show(); };
     p.querySelector('#mm-set').onclick = () => LG.UI.renderSettings();
     p.querySelector('#mm-lang').onclick = () => { LG.I18n.set(LG.I18n.lang === 'zh' ? 'en' : 'zh'); showMenu(); };
+  }
+
+  /* ================= 菜单/大厅场景氛围背景 =================
+     阶段十二：主菜单不再是纯黑死屏 —— 深渊渐变 + 顶部金晕 + 金色尘埃缓升。
+     仅 scene ≠ game 时每帧调用（粒子量小，桌面/手机均无压力）。 */
+  const amb = { ps: null };
+  function renderAmbience(dt) {
+    if (!canvas) return;
+    g = canvas.getContext('2d');
+    g.imageSmoothingEnabled = false;
+    g.setTransform(DPR, 0, 0, DPR, 0, 0);
+    const W = window.innerWidth, H = window.innerHeight;
+    const grad = g.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, '#131726'); grad.addColorStop(0.55, '#0c0f18'); grad.addColorStop(1, '#07080d');
+    g.fillStyle = grad; g.fillRect(0, 0, W, H);
+    const rg = g.createRadialGradient(W / 2, H * 0.3, 20, W / 2, H * 0.3, Math.max(W, H) * 0.75);
+    rg.addColorStop(0, 'rgba(216,180,90,0.10)'); rg.addColorStop(1, 'rgba(216,180,90,0)');
+    g.fillStyle = rg; g.fillRect(0, 0, W, H);
+    if (!amb.ps) {
+      amb.ps = [];
+      for (let i = 0; i < 70; i++) amb.ps.push({
+        x: Math.random() * W, y: Math.random() * H,
+        s: 1 + Math.random() * 2, v: 6 + Math.random() * 16, p: Math.random() * 6.28,
+      });
+    }
+    for (let i = 0; i < amb.ps.length; i++) {
+      const pt = amb.ps[i];
+      pt.y -= pt.v * dt; pt.p += dt * 2;
+      if (pt.y < -6) { pt.y = H + 6; pt.x = Math.random() * W; }
+      if (pt.x > W + 6) pt.x = -6;
+      g.fillStyle = 'rgba(230,196,120,' + (0.18 + 0.35 * (0.5 + 0.5 * Math.sin(pt.p))).toFixed(2) + ')';
+      g.fillRect(pt.x, pt.y, pt.s, pt.s);
+    }
   }
 
   /* ================= 开局（由 lobby 'start_game' 触发） ================= */
@@ -62,6 +105,7 @@
   }
 
   function bootWorld() {
+    LG.UI.closePanel(); // 角色创建关闭时可能回弹了主菜单面板（menu 场景），此处清掉再进世界
     // 世界生成（Q9 种子框架）
     LG.Terrain.generate(LG.Config.SEED);
     Engine.scene = 'game'; // 地形就绪后才进入游戏场景
@@ -84,7 +128,7 @@
     if (!LG.Net.isHost) {
       setInterval(() => {
         LG.Net.send({ t: 'in', x: LG.Player.x, y: LG.Player.y, mode: LG.Player.mode,
-          name: LG.Player._raw.name, look: LG.Player._raw.look, hp: LG.Player.hp, down: LG.Player.down });
+          name: LG.Player._raw.name, look: playerLook(), hp: LG.Player.hp, down: LG.Player.down });
       }, 100); // 10Hz 上报
     }
   }
@@ -118,7 +162,7 @@
     frames++; fpsT += dt;
     if (fpsT >= 1) { Engine.fps = frames; frames = 0; fpsT = 0; }
 
-    if (Engine.scene !== 'game') return;
+    if (Engine.scene !== 'game') { renderAmbience(dt); return; }
 
     handleHotkeys();
     LG.Input.updateMoveVec();
@@ -129,12 +173,8 @@
     // 只更新玩家附近实体（Q60 性能：30帧保底/同屏100怪）
     const px = LG.Player.x, py = LG.Player.y;
     LG.Player.update(dt);
-    const far = [];
-    for (let i = LG.Enemy.list.length - 1; i >= 0; i--) {
-      const e = LG.Enemy.list[i];
-      if (LG.U.dist(e.x, e.y, px, py) > 45) far.push(e); // 远处冻结
-    }
-    // 冻结远处：临时剔除后更新再放回
+    resolvePending(); // 寻路到达 NPC/宝箱后自动交互（点击远处目标的闭环）
+    // 冻结远处敌人：临时剔除 -> 更新 -> 放回（45格外不更新 AI/移动）
     const frozen = [];
     for (let i = LG.Enemy.list.length - 1; i >= 0; i--) {
       if (LG.U.dist(LG.Enemy.list[i].x, LG.Enemy.list[i].y, px, py) > 45) frozen.push(LG.Enemy.list.splice(i, 1)[0]);
@@ -168,42 +208,135 @@
     sendSnapshot();
   }
 
-  /* ================= 快捷键（一次性动作） ================= */
+  /* ================= 快捷键 / 手柄 / 点击交互 ================= */
+  const INTERACT_RANGE = 2.6, CHEST_RANGE = 2.2;
+
   function handleHotkeys() {
-    const K = LG.Input.keymap, ks = LG.Input.state.keys;
-    const once = (action, fn) => {
-      const code = K[action];
-      if (ks[code] && !Engine['_k_' + action]) { Engine['_k_' + action] = true; fn(); }
-      else if (!ks[code]) Engine['_k_' + action] = false;
-    };
+    const K = LG.Input.keymap;
+    // 一次性动作：消费点按队列（事件驱动，短点按不丢失）
+    const once = (action, fn) => { if (LG.Input.takePress(K[action])) fn(); };
     once('potion', () => LG.Player.usePotion());
     once('block', () => LG.Player.block());
     once('jump', () => LG.Player.jump());
-    once('bag', () => LG.UI.renderBag());
-    once('map', () => LG.UI.renderMap());
-    once('quest', () => lgQuestPanel());
+    once('bag', () => LG.UI.togglePage('bag', LG.UI.renderBag));
+    once('map', () => LG.UI.togglePage('map', LG.UI.renderMap));
+    once('quest', () => LG.UI.togglePage('quest', lgQuestPanel));
     once('mode', () => toggleMode());
-    // 鼠标点击：交互优先，否则移动
+    once('interact', () => interactNearest());
+    once('attack', () => LG.Combat.forceSwing());
+
+    // 手柄一次性按键（映射见 input.js PAD：A交互 B格挡 X跳跃 Y药水 LB模式 RT攻击）
+    if (LG.Input.padAction('interact')) interactNearest();
+    if (LG.Input.padAction('block')) LG.Player.block();
+    if (LG.Input.padAction('jump')) LG.Player.jump();
+    if (LG.Input.padAction('potion')) LG.Player.usePotion();
+    if (LG.Input.padAction('mode')) toggleMode();
+    if (LG.Input.padAction('attack')) LG.Combat.forceSwing();
+    if (LG.Input.padAction('bag')) LG.UI.togglePage('bag', LG.UI.renderBag);
+    if (LG.Input.padAction('map')) LG.UI.togglePage('map', LG.UI.renderMap);
+
+    // 鼠标/触屏点击：HUD按钮 > 攻击模式 > 交互(NPC/宝箱，远了自动走过去) > 移动
     const c = LG.Input.consumeClick();
-    if (c) {
-      const w = LG.Camera.screenToWorld(c.x, c.y);
-      const npc = LG.NPC.nearby(w.x, w.y);
-      if (npc && LG.U.dist(LG.Player.x, LG.Player.y, npc.x, npc.y) < 3) { LG.NPC.interact(npc); return; }
-      const chest = Engine._chests.find((ch) => !ch.opened && LG.U.dist(w.x, w.y, ch.x, ch.y) < 1.2);
-      if (chest && LG.U.dist(LG.Player.x, LG.Player.y, chest.x, chest.y) < 3) { openChest(chest); return; }
-      // 攻击模式按钮区（右上角）点击切换
-      const W = window.innerWidth;
-      if (c.x > W - 130 && c.y < 40) { toggleMode(); return; }
-      LG.Player.moveTo(w.x, w.y);
+    if (!c) return;
+    Engine._pending = null; // 新指令作废旧的“走到后交互”
+    // 1) 触屏 HUD 按钮优先（修复：此前点击被 handleHotkeys 提前消费导致按钮失效）
+    if (isTouchUI()) {
+      const btn = LG.Input.hitButton(c);
+      if (btn) { doTouchButton(btn.id); return; }
     }
+    // 2) 右上角攻击模式按钮区
+    const W = window.innerWidth;
+    if (c.x > W - 130 && c.y < 40) { toggleMode(); return; }
+    const w = LG.Camera.screenToWorld(c.x, c.y);
+    // 3) NPC：点中则范围内直接交互，否则寻路过去自动交互（修复“点击NPC没反应”）
+    const npc = LG.NPC.nearby(w.x, w.y);
+    if (npc && LG.U.dist(w.x, w.y, npc.x, npc.y) < 1.5) {
+      if (LG.U.dist(LG.Player.x, LG.Player.y, npc.x, npc.y) <= INTERACT_RANGE) LG.NPC.interact(npc);
+      else { LG.Player.moveTo(npc.x, npc.y); Engine._pending = { type: 'npc', obj: npc }; }
+      return;
+    }
+    // 4) 宝箱同理（点击开箱 -> 走过去自动开）
+    const chest = nearestChest(w.x, w.y, 1.5);
+    if (chest) {
+      if (LG.U.dist(LG.Player.x, LG.Player.y, chest.x, chest.y) <= CHEST_RANGE) openChest(chest);
+      else { LG.Player.moveTo(chest.x, chest.y); Engine._pending = { type: 'chest', obj: chest }; }
+      return;
+    }
+    // 5) 空地：移动
+    LG.Player.moveTo(w.x, w.y);
   }
+
+  /* E键 / 手柄A / 触屏“交”按钮：就近交互（NPC 优先，其次宝箱） */
+  function interactNearest() {
+    const P = LG.Player;
+    const npc = LG.NPC.nearby(P.x, P.y);
+    if (npc) {
+      if (LG.U.dist(P.x, P.y, npc.x, npc.y) <= INTERACT_RANGE) { LG.NPC.interact(npc); return; }
+      LG.UI.toast(LG.I18n.get('come_closer')); return;
+    }
+    const chest = nearestChest(P.x, P.y, CHEST_RANGE);
+    if (chest) { openChest(chest); return; }
+    LG.UI.toast(LG.I18n.get('nothing_near'));
+  }
+
+  function nearestChest(x, y, r) {
+    return Engine._chests.find((ch) => !ch.opened && LG.U.dist(x, y, ch.x, ch.y) < r) || null;
+  }
+
+  /* 寻路到达后的自动交互闭环；玩家手动接管（WASD/摇杆）或走不到则取消 */
+  function resolvePending() {
+    const p = Engine._pending; if (!p) return;
+    const P = LG.Player, mv = LG.Input.state.moveVec;
+    if (mv.x || mv.y) { Engine._pending = null; return; } // 摇杆/WASD 接管
+    const o = p.obj, range = p.type === 'npc' ? INTERACT_RANGE : CHEST_RANGE;
+    const d = LG.U.dist(P.x, P.y, o.x, o.y);
+    if (d <= range) { Engine._pending = null; if (p.type === 'npc') LG.NPC.interact(o); else openChest(o); return; }
+    if (!P.path.length && d > range + 0.5) { Engine._pending = null; LG.UI.toast(LG.I18n.get('unreachable')); }
+  }
+
+  function doTouchButton(id) {
+    if (id === 'jump') LG.Player.jump();
+    else if (id === 'block') LG.Player.block();
+    else if (id === 'potion') LG.Player.usePotion();
+    else if (id === 'bag') LG.UI.togglePage('bag', LG.UI.renderBag);
+    else if (id === 'interact') interactNearest();
+  }
+
   function toggleMode() {
     const order = ['on', 'half', 'off'];
     const next = order[(order.indexOf(LG.Player.mode) + 1) % 3];
     LG.Player.setMode(next);
-    LG.UI.toast(LG.I18n.get('attack_mode') + ': ' + LG.I18n.get('mode_' + (next === 'on' ? 'on' : next === 'off' ? 'off' : 'half')));
+    LG.UI.toast(LG.I18n.get('attack_mode') + ': ' + LG.I18n.get('mode_' + next));
   }
-  function lgQuestPanel() { LG.UI.renderQuests(); }
+  function lgQuestPanel() { return LG.UI.renderQuests(); }
+
+  /* 触屏 UI 判定：主指针为触摸才画虚拟按钮（触屏笔记本不遮挡画面） */
+  function isTouchUI() {
+    return window.matchMedia ? window.matchMedia('(pointer: coarse)').matches : ('ontouchstart' in window);
+  }
+
+  /* 本机外观（含手持武器种类）：本体渲染与联机同步共用，换武器即换外观 */
+  function playerLook() {
+    return Object.assign({}, LG.Player._raw.look, {
+      gender: LG.Player._raw.gender || (LG.Player._raw.look || {}).gender,
+      weaponKind: (LG.Inv.equip.weapon || {}).kind,
+    });
+  }
+
+  /* NPC 差异化外观：由 id 哈希稳定生成（性别/发型/发色/肤色/手持），避免“千人一面” */
+  const HAIRS = ['short', 'long', 'ponytail', 'spiky'];
+  const NPC_HAIR_COLORS = ['#2a2a35', '#6a4a2a', '#8a8a92', '#4a2f1a', '#7a3a2a', '#3a3a4a'];
+  const NPC_SKINS = ['#e0b090', '#d8c0a0', '#c9a583'];
+  function npcLook(n) {
+    if (!n._look) {
+      let h = 0; for (const ch of n.id) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+      const held = { quest: 'melee', tutorial: 'melee', enhance: 'melee', heal: 'magic', lore: 'magic', shop: null };
+      n._look = { gender: h % 2 ? 'F' : 'M', hair: HAIRS[(h >> 2) % 4],
+        hairColor: NPC_HAIR_COLORS[(h >> 4) % 6], skin: NPC_SKINS[(h >> 7) % 3],
+        weaponKind: held[n.role] };
+    }
+    return n._look;
+  }
 
   function openChest(ch) {
     ch.opened = true;
@@ -212,7 +345,8 @@
     LG.Player.gainExp(d.exp);
     d.items.forEach((it) => LG.Inv.add(it));
     LG.Sound.play('pickup');
-    LG.UI.toast('宝箱: +' + d.silver + '银' + (d.items.length ? ' ×' + d.items.length + '物品' : ''));
+    LG.UI.toast((LG.I18n.lang === 'zh' ? '宝箱' : 'Chest') + ': +' + d.silver + ' ' + LG.I18n.get('silver_s') +
+      (d.items.length ? ' ×' + d.items.length + (LG.I18n.lang === 'zh' ? '物品' : ' items') : ''));
   }
 
   /* ================= 渲染 ================= */
@@ -225,8 +359,20 @@
 
     const view = LG.Camera.view();
     const Tsz = LG.Config.TILE, zoom = LG.Camera.zoomVal;
-    const TILE_IMG = {};
-    const typeNames = { 0: 'grass', 1: 'dirt', 2: 'sand', 3: 'snow', 4: 'rock', 5: 'water', 6: 'road', 7: 'rock', 8: 'castle', 9: 'void' };
+    const typeNames = { 0: 'grass', 1: 'dirt', 2: 'sand', 3: 'snow', 4: 'rock', 5: 'water', 6: 'road', 7: 'wall', 8: 'castle', 9: 'void' };
+
+    // 鼠标悬停目标（桌面端高亮可交互物 + 指针反馈）
+    let hNpc = null, hChest = null, hEnemy = null;
+    const hv = LG.Input.state.hover;
+    if (hv) {
+      const hw = LG.Camera.screenToWorld(hv.x, hv.y);
+      hNpc = LG.NPC.nearby(hw.x, hw.y);
+      if (hNpc && LG.U.dist(hw.x, hw.y, hNpc.x, hNpc.y) > 1.5) hNpc = null;
+      hChest = nearestChest(hw.x, hw.y, 1.5);
+      hEnemy = LG.Enemy.list.find((e) => e.hp > 0 && !e.isBoss && LG.U.dist(hw.x, hw.y, e.x, e.y) < 1.1) || null;
+    }
+    const cur = (hNpc || hChest) ? 'pointer' : 'default';
+    if (canvas._cur !== cur) { canvas.style.cursor = cur; canvas._cur = cur; }
 
     // 地形（视口裁剪）
     const x0 = Math.max(0, view.x0 | 0), y0 = Math.max(0, view.y0 | 0);
@@ -234,36 +380,40 @@
     const draw = Tsz * zoom;
     for (let y = y0; y <= y1; y++) {
       for (let x = x0; x <= x1; x++) {
-        const t = LG.Terrain.tileAt(x, y);
         // 迷宫迷雾（Q17）：O(1) 区域判定，避免每瓦片扫描
         if (LG.Terrain.isMazeAt(x, y) && !LG.Terrain.fog.visible(x, y)) continue;
+        const t = LG.Terrain.tileAt(x, y);
         const name = typeNames[t.type] || 'grass';
-        const img = LG.Assets.tile(name);
+        // 2.5D 高差挤出：邻层差决定崖壁/落影/亮棱（heightAt 原始查询零分配，烘焙图一次drawImage）
+        const h = t.height;
+        const img = LG.Assets.groundTile(name, h,
+          h - LG.Terrain.heightAt(x, y + 1),      // 南邻更低 -> 本片底边崖壁
+          LG.Terrain.heightAt(x, y - 1) - h);     // 北邻更高 -> 本片顶边落影（负数=亮棱）
         const s = LG.Camera.worldToScreen(x, y);
         g.drawImage(img, s.x, s.y, draw + 1, draw + 1);
-        // 高差/矮障：画阴影（Q10 高差）
-        if (t.height === 1) { g.fillStyle = 'rgba(0,0,0,0.25)'; g.fillRect(s.x, s.y + draw * 0.7, draw, draw * 0.3); }
-        if (t.wall) { g.fillStyle = 'rgba(0,0,0,0.55)'; g.fillRect(s.x, s.y, draw, draw); }
-        if (t.water) { g.fillStyle = 'rgba(120,180,255,0.15)'; g.fillRect(s.x, s.y, draw, draw); }
       }
     }
 
-    // 宝箱
+    // 宝箱（悬停金环提示可开启）
     Engine._chests.forEach((ch) => {
       if (ch.opened) return;
       if (ch.x < view.x0 || ch.x > view.x1 || ch.y < view.y0 || ch.y > view.y1) return;
       if (LG.Terrain.isMazeAt(ch.x, ch.y) && !LG.Terrain.fog.visible(ch.x, ch.y)) return;
       const s = LG.Camera.worldToScreen(ch.x, ch.y);
+      if (ch === hChest) highlightRing(s, draw, '#e6c05a');
+      blobShadow(s.x, s.y, draw);
       g.drawImage(LG.Assets.chest(), s.x, s.y, draw, draw);
     });
 
-    // NPC
+    // NPC：按 id 稳定生成差异化外观（Q42），金色名字 + 悬停高亮
     LG.NPC.list.forEach((n) => {
       if (n.x < view.x0 || n.x > view.x1 || n.y < view.y0 || n.y > view.y1) return;
       const s = LG.Camera.worldToScreen(n.x, n.y);
-      g.drawImage(LG.Assets.hero({ gender: 'M', hairColor: '#888', skin: '#d8c0a0' }), s.x, s.y, draw, draw);
-      g.fillStyle = '#d8b45a'; g.font = Math.max(10, 11 * zoom) + 'px sans-serif'; g.textAlign = 'center';
-      g.fillText(n.zh || n.en, s.x + draw / 2, s.y - 4);
+      if (n === hNpc) highlightRing(s, draw, '#d8b45a');
+      blobShadow(s.x, s.y, draw);
+      g.drawImage(LG.Assets.hero(npcLook(n)), s.x, s.y, draw, draw);
+      g.fillStyle = '#d8b45a'; g.font = 'bold ' + Math.max(10, 11 * zoom) + 'px "LegendKai", sans-serif'; g.textAlign = 'center';
+      g.fillText(LG.I18n.lang === 'zh' ? (n.zh || n.en) : (n.en || n.zh), s.x + draw / 2, s.y - 4);
     });
 
     // 敌人（人类军队）
@@ -271,9 +421,18 @@
       if (e.x < view.x0 || e.x > view.x1 || e.y < view.y0 || e.y > view.y1) return;
       if (LG.Terrain.isMazeAt(e.x, e.y) && !LG.Terrain.fog.visible(e.x, e.y)) return;
       const s = LG.Camera.worldToScreen(e.x, e.y);
-      const size = e.isBoss ? draw * 2 : draw;
-      const img = e.isBoss ? LG.Assets.boss(e.type.id, e.type.color) : LG.Assets.enemy(e.type);
-      g.drawImage(img, s.x - (e.isBoss ? draw / 2 : 0), s.y - (e.isBoss ? draw : 0), size, size);
+      if (e === hEnemy) highlightRing(s, draw, '#ff6a6a');
+      // 4朝向精灵：'w' 用 'e' 变体水平翻转；BOSS 保持正面（王冠造型对称）
+      if (e.isBoss) {
+        g.drawImage(LG.Assets.boss(e.type.id, e.type.color), s.x - draw / 2, s.y - draw, draw * 2, draw * 2);
+      } else {
+        blobShadow(s.x, s.y, draw);
+        const ed = e.dir || 's';
+        const edv = ed === 'n' ? 'n' : ed === 's' ? 's' : 'e';
+        const img = LG.Assets.enemy(e.type, edv);
+        if (ed === 'w') { g.save(); g.translate(s.x + draw, 0); g.scale(-1, 1); g.drawImage(img, 0, s.y, draw, draw); g.restore(); }
+        else g.drawImage(img, s.x, s.y, draw, draw);
+      }
       // 血条
       if (e.hp < e.maxHp && !e.isBoss) {
         g.fillStyle = '#222'; g.fillRect(s.x + 2, s.y - 8, draw - 4, 4);
@@ -282,28 +441,40 @@
       }
     });
 
-    // 远端玩家（联机可见 Q52）
+    // 远端玩家（联机可见 Q52）：由位置增量推断朝向，无需改联机协议
     Object.keys(LG.Net.peers || {}).forEach((id) => {
       const pr = LG.Net.peers[id];
       if (pr.x == null) return;
+      const ddx = pr.x - (pr._px == null ? pr.x : pr._px);
+      const ddy = pr.y - (pr._py == null ? pr.y : pr._py);
+      if (Math.abs(ddx) + Math.abs(ddy) > 0.003)
+        pr.dir = Math.abs(ddx) > Math.abs(ddy) ? (ddx > 0 ? 'e' : 'w') : (ddy > 0 ? 's' : 'n');
+      pr._px = pr.x; pr._py = pr.y;
       const s = LG.Camera.worldToScreen(pr.x, pr.y);
-      g.drawImage(LG.Assets.hero(pr.look || {}), s.x, s.y, draw, draw);
-      g.fillStyle = '#6cf'; g.font = '11px sans-serif'; g.textAlign = 'center';
-      g.fillText(pr.name || '玩家', s.x + draw / 2, s.y - 4);
+      const pd = pr.dir || 's';
+      const pv = pd === 'n' ? 'n' : pd === 's' ? 's' : 'e';
+      const him = LG.Assets.hero(pr.look || {}, pv);
+      blobShadow(s.x, s.y, draw);
+      if (pd === 'w') { g.save(); g.translate(s.x + draw, 0); g.scale(-1, 1); g.drawImage(him, 0, s.y, draw, draw); g.restore(); }
+      else g.drawImage(him, s.x, s.y, draw, draw);
+      g.fillStyle = '#6cf'; g.font = '11px "LegendKai", sans-serif'; g.textAlign = 'center';
+      g.fillText(pr.name || 'Player', s.x + draw / 2, s.y - 4);
     });
 
-    // 本体玩家（跳跃时上浮，Q21 伪跳跃）
+    // 本体玩家（跳跃时上浮，Q21 伪跳跃；手持武器跟随当前装备）
     const ps = LG.Camera.worldToScreen(LG.Player.x, LG.Player.y);
     const jumpOffset = LG.Player.jumping ? -10 * zoom : 0;
+    const pdir = LG.Player.dir || 's';
+    const pvar = pdir === 'n' ? 'n' : pdir === 's' ? 's' : 'e'; // 'w' 由翻转 'e' 生成
     g.save();
     if (LG.Player.down) g.globalAlpha = 0.5;
     if (LG.Player.blockUntil > performance.now() / 1000) {
       g.strokeStyle = '#7fb3ff'; g.lineWidth = 2;
       g.beginPath(); g.arc(ps.x + draw / 2, ps.y + draw / 2, draw * 0.7, 0, Math.PI * 2); g.stroke();
     }
-    const look = LG.Player._raw.look || {};
-    const hero = LG.Assets.hero(LG.Player._raw.gender === 'F' ? { ...look, gender: 'F' } : look);
-    if (LG.Player.facing < 0) { g.translate(ps.x + draw, 0); g.scale(-1, 1); g.drawImage(hero, 0, ps.y + jumpOffset, draw, draw); }
+    blobShadow(ps.x, ps.y, draw); // 跳跃时投影留在地面
+    const hero = LG.Assets.hero(playerLook(), pvar);
+    if (pdir === 'w') { g.translate(ps.x + draw, 0); g.scale(-1, 1); g.drawImage(hero, 0, ps.y + jumpOffset, draw, draw); }
     else g.drawImage(hero, ps.x, ps.y + jumpOffset, draw, draw);
     g.restore();
 
@@ -320,7 +491,7 @@
       const k = f.t / f.life;
       if (f.type === 'text') {
         g.globalAlpha = 1 - k; g.fillStyle = f.color;
-        g.font = 'bold ' + Math.max(12, 14 * zoom) + 'px sans-serif'; g.textAlign = 'center';
+        g.font = 'bold ' + Math.max(12, 14 * zoom) + 'px "LegendKai", sans-serif'; g.textAlign = 'center';
         g.fillText(f.text, s.x + draw / 2, s.y - k * 24);
         g.globalAlpha = 1;
       } else if (f.type === 'slash') {
@@ -338,43 +509,79 @@
     // 倒地救援提示（Q26）
     if (LG.Player.down) {
       g.fillStyle = 'rgba(0,0,0,0.5)'; g.fillRect(0, 0, window.innerWidth, window.innerHeight);
-      g.fillStyle = '#ff6060'; g.font = '24px sans-serif'; g.textAlign = 'center';
+      g.fillStyle = '#ff6060'; g.font = '24px "LegendKai", sans-serif'; g.textAlign = 'center';
       g.fillText(LG.I18n.get('down_rescue') + ' ' + Math.ceil(LG.Player._raw.downTimer), window.innerWidth / 2, window.innerHeight / 2);
-      g.fillStyle = '#ccc'; g.font = '16px sans-serif';
-      g.fillText(LG.I18n.get('back_camp') + ' (' + LG.Config.SILVER_DROP_PENALTY * 100 + '% 银币)', window.innerWidth / 2, window.innerHeight / 2 + 30);
+      g.fillStyle = '#ccc'; g.font = '16px "LegendKai", sans-serif';
+      g.fillText(LG.I18n.get('back_camp') + ' (' + LG.Config.SILVER_DROP_PENALTY * 100 + '% ' + LG.I18n.get('silver') + ')', window.innerWidth / 2, window.innerHeight / 2 + 30);
     }
 
-    // 移动端操作按钮（触屏 Q18）
-    if ('ontouchstart' in window) drawTouchButtons();
+    // 交互提示：靠近 NPC/宝箱时头顶显示按键提示（Q41 易用性）
+    if (!LG.Player.down) drawInteractPrompt(draw, zoom);
+
+    // 触屏：虚拟摇杆（按下左半屏才显示）+ HUD 按钮（粗指针设备，触屏笔记本不遮挡）
+    drawJoystick();
+    if (isTouchUI()) drawTouchButtons();
   }
 
+  /* 实体脚下椭圆投影（贴地感，消除"漂浮"）。
+     半径须大于精灵躯干宽（~0.62*size），下缘越过双脚，否则整只藏在精灵后面等于没画 */
+  function blobShadow(x, y, size) {
+    g.fillStyle = 'rgba(0,0,0,0.28)';
+    g.beginPath();
+    g.ellipse(x + size / 2, y + size * 0.95, size * 0.4, size * 0.13, 0, 0, Math.PI * 2);
+    g.fill();
+  }
+
+  /* 可交互目标悬停高亮（呼吸圆环） */
+  function highlightRing(s, draw, color) {
+    g.strokeStyle = color; g.lineWidth = 2;
+    g.globalAlpha = 0.55 + 0.45 * Math.sin(performance.now() / 220);
+    g.beginPath(); g.ellipse(s.x + draw / 2, s.y + draw * 0.92, draw * 0.45, draw * 0.2, 0, 0, Math.PI * 2); g.stroke();
+    g.globalAlpha = 1;
+  }
+
+  /* 靠近 NPC/宝箱时的交互提示（桌面 [E] 交互 / 触屏直接点按钮） */
+  function drawInteractPrompt(draw, zoom) {
+    const P = LG.Player;
+    const target = LG.NPC.list.find((n) => LG.U.dist(P.x, P.y, n.x, n.y) <= INTERACT_RANGE)
+      || nearestChest(P.x, P.y, CHEST_RANGE);
+    if (!target) return;
+    const s = LG.Camera.worldToScreen(target.x, target.y);
+    const label = (isTouchUI() ? '' : '[E] ') + LG.I18n.get('interact');
+    g.font = Math.max(11, 12 * zoom) + 'px "LegendKai", sans-serif'; g.textAlign = 'center';
+    const tw = g.measureText(label).width, tx = s.x + draw / 2, ty = s.y - 18 * zoom;
+    g.fillStyle = 'rgba(0,0,0,0.65)'; g.fillRect(tx - tw / 2 - 6, ty - 12, tw + 12, 16);
+    g.fillStyle = '#ffe08a'; g.fillText(label, tx, ty + 1);
+  }
+
+  /* 虚拟摇杆可视化（触屏 Q18）：底座圈 + 摇杆头，玩家能看到手按在哪 */
+  function drawJoystick() {
+    const j = LG.Input.state.joy; if (!j) return;
+    g.lineWidth = 2;
+    g.fillStyle = 'rgba(0,0,0,0.30)'; g.strokeStyle = 'rgba(255,255,255,0.35)';
+    g.beginPath(); g.arc(j.base.x, j.base.y, 54, 0, Math.PI * 2); g.fill(); g.stroke();
+    g.fillStyle = 'rgba(255,255,255,0.45)';
+    g.beginPath(); g.arc(j.cur.x, j.cur.y, 24, 0, Math.PI * 2); g.fill();
+  }
+
+  /* 触屏 HUD 按钮：几何来自 LG.Input.touchButtons()（与命中检测共用，保证所见即所点） */
   function drawTouchButtons() {
-    const W = window.innerWidth, H = window.innerHeight;
-    const btn = (x, y, r, label, hot) => {
+    const zh = LG.I18n.lang === 'zh';
+    const short = zh ? { jump: '跳', block: '挡', potion: '药', bag: '包', interact: '交' }
+                     : { jump: 'Jmp', block: 'Blk', potion: 'Pot', bag: 'Bag', interact: 'Act' };
+    const P = LG.Player;
+    const ready = LG.NPC.list.some((n) => LG.U.dist(P.x, P.y, n.x, n.y) <= INTERACT_RANGE)
+      || !!nearestChest(P.x, P.y, CHEST_RANGE);
+    for (const b of LG.Input.touchButtons()) {
+      const hot = b.id === 'block' ? P.blockUntil > performance.now() / 1000
+        : b.id === 'potion' ? P.potions > 0
+        : b.id === 'interact' ? ready : false;
       g.fillStyle = hot ? 'rgba(216,180,90,0.5)' : 'rgba(0,0,0,0.4)';
-      g.strokeStyle = '#4a5064';
-      g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill(); g.stroke();
-      g.fillStyle = '#fff'; g.font = '13px sans-serif'; g.textAlign = 'center';
-      g.fillText(label, x, y + 5);
-      return { x, y, r };
-    };
-    Engine._tbtns = [
-      btn(W - 60, H - 70, 30, LG.I18n.get('jump'), false),
-      btn(W - 130, H - 110, 28, LG.I18n.get('block'), LG.Player.blockUntil > performance.now() / 1000),
-      btn(W - 60, H - 150, 26, LG.I18n.get('potion') + LG.Player.potions, LG.Player.potions > 0),
-      btn(W - 200, H - 70, 24, LG.I18n.get('bag'), false),
-    ];
-    // 触屏按钮点击判定
-    const c = LG.Input.state.click;
-    if (c) {
-      for (const b of Engine._tbtns) {
-        if (LG.U.dist(c.x, c.y, b.x, b.y) <= b.r) {
-          if (b === Engine._tbtns[0]) LG.Player.jump();
-          else if (b === Engine._tbtns[1]) LG.Player.block();
-          else if (b === Engine._tbtns[2]) LG.Player.usePotion();
-          else if (b === Engine._tbtns[3]) LG.UI.renderBag();
-        }
-      }
+      g.strokeStyle = '#4a5064'; g.lineWidth = 1.5;
+      g.beginPath(); g.arc(b.x, b.y, b.r, 0, Math.PI * 2); g.fill(); g.stroke();
+      g.fillStyle = '#fff'; g.textAlign = 'center';
+      g.font = (b.r > 26 ? 15 : 13) + 'px "LegendKai", sans-serif';
+      g.fillText(b.id === 'potion' ? short[b.id] + P.potions : (short[b.id] || b.id), b.x, b.y + 5);
     }
   }
 
@@ -424,13 +631,20 @@
         const type = LG.Config.ENEMY_TYPES.find((t) => t.id === se.tid) || LG.Config.ENEMY_TYPES[0];
         e = { type, x: se.x, y: se.y, hp: se.hp, maxHp: se.max, dmg: type.dmg, speed: type.speed,
               range: type.range, aspd: type.aspd, aggro: type.aggro, state: 'idle', atkCd: 0,
-              skillCd: 0, kind: se.kind, isBoss: se.boss, facing: -1, phase: 0,
+              skillCd: 0, kind: se.kind, isBoss: se.boss, facing: -1, phase: 0, dir: 's',
               region: Engine._lastRegion };
         LG.Enemy.list[se.i] = e;
-      } else { e.x = se.x; e.y = se.y; e.hp = se.hp; e.maxHp = se.max; }
+      } else {
+        // 位置增量推断朝向（快照不含 dir，零协议改动）
+        const ddx = se.x - e.x, ddy = se.y - e.y;
+        if (Math.abs(ddx) + Math.abs(ddy) > 0.01)
+          e.dir = Math.abs(ddx) > Math.abs(ddy) ? (ddx > 0 ? 'e' : 'w') : (ddy > 0 ? 's' : 'n');
+        e.x = se.x; e.y = se.y; e.hp = se.hp; e.maxHp = se.max;
+      }
     });
   }
 
+  Engine.openMenu = showMenu; // 供 UI（设置页返回按钮）回到主菜单
   LG.Engine = Engine;
   Engine.start = start;
   Engine.applyBrightness = applyBrightness;
