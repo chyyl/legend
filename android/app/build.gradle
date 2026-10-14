@@ -16,10 +16,22 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        // 发布签名：android/keystore/legend-release.jks（keytool 生成，RSA2048/10000天，
+        // CN=LEGEND；生成命令与密码见 README「📦 打包发布」章节）。个人项目密钥已入库，
+        // 对外发布前应换钥重签并从历史中清除。
+        release {
+            storeFile file('../keystore/legend-release.jks')
+            storePassword 'legend2026'
+            keyAlias 'legend'
+            keyPassword 'legend2026'
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.release
         }
     }
 }

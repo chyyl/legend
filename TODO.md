@@ -189,6 +189,31 @@
       会让默认上下文跨跑残留 legend_save_1 使菜单变继续游戏、#cc-ok 超时；t1/t2/t3/t4 回归全绿
 - [x] 15.5 文档同步：api.md（7.8 Save 接口/事件总线 chest_open/Engine 存档入口）、README 存档特色行
 
+## 阶段十六：Android APK 命令行出包全链打通 ★ 2026-10-14 完成
+
+> 恢复被打断的打包主线：纯命令行（不依赖 Android Studio）出签名 Release 包
+
+- [x] 16.1 工具链定案：Gradle 9.5.1（wrapper，腾讯镜像）+ AGP 8.13.0（Capacitor 7 锁定）；
+      先试系统 JDK 26 → 撞死（见 16.2③）→ 换 **Temurin 21**（清华 TUNA Adoptium 镜像 zip 195MB，
+      `jar xf` 解压至 `C:\Users\L1896\tools\jdk21\`，不进 PATH），`org.gradle.java.home` 指定后一次通过
+- [x] 16.2 三个环境坑修复：
+      ① `dl.google.com` 超时 → `~/.gradle/init.d/mirror.gradle` 注入阿里云四镜像并**真正前置**
+      （普通仓库「快照既有→清空→镜像→还原」；buildscript 侧直接追加即可）；
+      ② `local.properties` 单反斜杠被 Properties 转义吞掉 → SdkLocator Win32 error 123 → 改正斜杠；
+      ③ JDK 26 jlink 报「java.base 中找不到工作版本签名」→ AGP 已知 bug「JdkImageTransform failure
+      with JDK 26」（Google Issue #486844145，AGP 9.2.0 才修复），**无开关可绕** → 16.1 的 JDK 21 解
+- [x] 16.3 签名与出包：`android/keystore/legend-release.jks`（alias `legend`、密码 `legend2026`、
+      RSA2048/10000天）挂 `app/build.gradle → signingConfigs.release`；
+      `assembleDebug` 1m15s、`assembleRelease` 1m57s 均 BUILD SUCCESSFUL
+- [x] 16.4 产物验证（aapt2 dump badging）：`package com.legend.game v1.0` /
+      `application-label 'LEGEND'` / `minSdkVersion '23'` / `targetSdkVersion '35'` /
+      `INTERNET` 权限；归档 `dist/LEGEND-v1.0-release.apk`（3.5MB）与 `dist/LEGEND-v1.0-debug.apk`（4.4MB）
+- [x] 16.5 文档实况化：README「📦 打包发布」整章重写（原 webDir:"."/minSdk21/兼容Android5 已过时）、
+      api.md §10 打包与运行、`capacitor.config.json` 对齐 minSdk23/targetSdk35、
+      `.gitignore` 加 `/dist/`（产物重构建即得，不入库）
+- [ ] 16.6 真机安装验收（本机 SDK 只有 build-tools/platform-tools，无模拟器与系统镜像）：
+      安装 → 启动 → 触屏操作 → 存档读写 → 断网可玩 → 局域网联机（走阶段九 9.4 清单）
+
 ## 已修复的关键缺陷（测试记录 2026-10-14 · 阶段十二）
 
 - **关掉设置后卡死**：menu 场景关闭设置/大厅面板后场景停在 menu 但无任何入口 → closePanel 场景感知回弹主菜单

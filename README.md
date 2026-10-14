@@ -55,34 +55,57 @@ python -m http.server 8080      # 终端2：静态服务
 
 ### Android APK（离线+联机全功能）
 
-项目已内置 `capacitor.config.json`（appId `com.legend.game`、`webDir:"."`、`minSdkVersion 21`、`releaseType: "APK"`），
-**无需 `npx cap init`**——网页文件原样打进 APK，断网可玩，同一局域网内多台设备照常联机。
+工程已就绪：`capacitor.config.json`（appId `com.legend.game`、`webDir:"www"`、`releaseType:"APK"`）
++ `android/`（Capacitor 7，**minSdk 23 = Android 6.0+**，Android 5 已放弃——Capacitor 7 的底线），
+断网可玩，同一局域网内多台设备照常联机。当前产物（2026-10-14 命令行出包验证）：
+
+| 包 | 路径 | 说明 |
+|---|---|---|
+| Release（已签名） | `dist/LEGEND-v1.0-release.apk` | 日常安装这个（3.5MB） |
+| Debug | `dist/LEGEND-v1.0-debug.apk` | 排查用，可连 logcat（4.4MB） |
 
 ```bash
-# 1) 初始化 Node 依赖（仅首次）
-npm init -y
-npm i @capacitor/core @capacitor/cli @capacitor/android
+# 1) 每次网页改动后重建 www 并同步进安卓工程（JS 改动必跑；sync = build-www + cap sync）
+npm run sync
 
-# 2) 挂载 Android 工程（仅首次，生成 android/ 目录）
-npx cap add android
+# 2) 命令行出包（Windows/macOS 用 ./gradlew.bat；Linux 用 ./gradlew）
+cd android && ./gradlew.bat assembleDebug     # 调试包
+cd android && ./gradlew.bat assembleRelease   # 签名 Release（签名已配好，直接出）
 
-# 3) 每次改动网页资源后，同步进 android/app/src/main/assets/public（仅复制，不改源码）
-npx cap sync android
-
-# 4) 打开 Android Studio 出包
-npx cap open android
-#    Build → Generate Signed Bundle / APK → APK → 新建/选择签名密钥 → Release
-#    产物：android/app/build/outputs/apk/release/app-release.apk
-
-# 命令行直出 Release 包（签名已配好时）
-cd android && ./gradlew assembleRelease
-# 安装到已连接设备
+# 3) 产物与安装
+#    android/app/build/outputs/apk/release/app-release.apk
 adb install -r android/app/build/outputs/apk/release/app-release.apk
 ```
 
-- **兼容 Android 5**：minSdkVersion 21 已在 `capacitor.config.json` 写死，勿改回 Capacitor 新版默认值
-- 每次 `npx cap sync` 后重新构建即可看到网页改动；`npx cap open android` 前无需删 `android/`
-- 真机验收清单见 `TODO.md` 阶段九 9.4（需本机 Android Studio）
+换新机器首次出包（本机已全部配好，照做即可）：
+
+```bash
+npm i @capacitor/core @capacitor/cli @capacitor/android   # Node 依赖（仅首次）
+npx cap add android                                       # 挂载工程（仅首次）
+# 生成签名密钥（仅首次；keytool 不在 PATH，需全路径调用）
+"C:\Program Files\Java\jdk-26.0.2.1\bin\keytool.exe" -genkeypair -v \
+  -keystore android/keystore/legend-release.jks -alias legend \
+  -keyalg RSA -keysize 2048 -validity 10000 \
+  -storepass legend2026 -keypass legend2026 \
+  -dname "CN=LEGEND, O=LEGEND Game, C=CN"
+```
+
+**环境要点（踩坑实录，改配置前先读）：**
+
+- **构建 JDK 必须 17/21**：`android/gradle.properties` 已指定
+  `org.gradle.java.home=C:/Users/L1896/tools/jdk21/jdk-21.0.12.1+1`
+  （清华 TUNA Adoptium 镜像的 Temurin 21 zip，`jar xf` 解压即用、不进 PATH）。
+  系统自带 JDK 26 会撞 AGP 8.x 已知 bug「JdkImageTransform failure with JDK 26」
+  （Google Issue #486844145，AGP 9.2.0 才修复），jlink 重建 java.base 必失败，**无开关可绕**。
+- **依赖镜像**：`~/.gradle/init.d/mirror.gradle` 注入阿里云四镜像（google/central/gradle-plugin/public），
+  `dl.google.com` 不通时必需；普通仓库须「快照既有 → 清空 → 镜像前置 → 还原既有」，否则根工程
+  `allprojects{google()}` 抢先超时。**删掉该文件构建必卡网络超时**。
+- **`android/local.properties` 的 `sdk.dir` 必须正斜杠**（`sdk.dir=C:/Users/.../Sdk`）：
+  反斜杠会被 Properties 转义吞掉，SdkLocator 报 Win32 error 123。
+- **签名**：`android/keystore/legend-release.jks`（alias `legend`、密码 `legend2026`）已挂
+  `app/build.gradle → signingConfigs.release`，`assembleRelease` 直接产出签名包。
+- 每次 JS 改动后 `npm run sync` 再构建才进包；`npx cap open android` 仍可用 Android Studio 图形出包。
+- 真机验收清单见 `TODO.md` 阶段九 9.4；打包全链与故障记录见 `TODO.md` 阶段十六。
 
 ### iOS（iPhone 12）
 ```bash

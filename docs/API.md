@@ -254,5 +254,19 @@
 ## 10. 打包与运行
 
 - **本地运行**：任意静态服务器（`python -m http.server 8080`）或直接双击 `index.html`（file:// 亦可，无 ES-module 依赖）
-- **Android APK**：`npm i @capacitor/core @capacitor/cli @capacitor/android && npx cap add android && npx cap sync && npx cap open android`（见 README）
+- **构建链**：`npm run sync`（= `node tools/build-www.mjs` 重建 `www/` + `npx cap sync android`）
+  → `cd android && ./gradlew.bat assembleDebug|assembleRelease`（Linux 用 `./gradlew`）
+  - 产物 `android/app/build/outputs/apk/{debug,release}/`；归档 `dist/LEGEND-v1.0-{release,debug}.apk`
+  - **minSdk 23（Android 6+）**以 `android/variables.gradle` 为准（Capacitor 7 底线，Android 5 放弃）；
+    `capacitor.config.json` android 块与之对齐
+  - **签名**：`android/keystore/legend-release.jks`（alias `legend`/密码 `legend2026`）挂
+    `app/build.gradle → signingConfigs.release`，`assembleRelease` 直接出签名包
+- **构建环境三件套（缺一即败，详见 README「📦 打包发布」）**：
+  1. **JDK 21**：`android/gradle.properties → org.gradle.java.home` 指向本地解压的 Temurin 21
+     （`C:/Users/L1896/tools/jdk21/...`，TUNA Adoptium 镜像 zip）。系统 JDK 26 撞 AGP 8.x 已知 bug
+     「JdkImageTransform failure with JDK 26」（Google Issue #486844145，AGP 9.2.0 才修复）
+  2. **阿里云镜像**：`~/.gradle/init.d/mirror.gradle` 注入 google/central/gradle-plugin/public 四镜像；
+     普通仓库须「快照既有→清空→镜像前置→还原既有」（根工程 `allprojects{google()}` 在 root 脚本期
+     先于子项目执行，追加会让 google() 抢第一、超时即中止）
+  3. **`local.properties` 正斜杠**：`sdk.dir=C:/Users/.../Sdk`（反斜杠被 Properties 转义吞掉 → Win32 123）
 - **局域网联机**（可选）：`node tools/lan-signal.js`

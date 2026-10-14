@@ -5,8 +5,8 @@
   "android": {
     "allowMixedContent": true,
     "backgroundColor": "#0b0d12",
-    "minSdkVersion": 21,
-    "targetSdkVersion": 33,
+    "minSdkVersion": 23,
+    "targetSdkVersion": 35,
     "buildOptions": { "releaseType": "APK" }
   },
   "ios": {
