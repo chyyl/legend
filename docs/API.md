@@ -81,14 +81,14 @@
 
 | 接口 | 说明 |
 |---|---|
-| `generate(seed)` | 手工框架+局部随机；含岛屿海岸线、台地高差（低频噪声 nHill：>0.73→2高山 / >0.63→1台地）、区域中心半径8清平、道路连通、迷宫（墙height=2/通路0）、成段矮台 |
+| `generate(seed)` | 手工框架+局部随机；含岛屿海岸线、台地高差（低频噪声 nHill：>0.73→2高山 / >0.63→1台地）、区域中心半径8清平、**先迷宫后道路**（`buildMaze(seed)`→`buildRoads`：道路后铺才能打进迷宫、贯通出入口并清平中心，顺序反了会把道路覆盖成密封墙盒）、成段矮台 |
 | `tileAt(x,y)` | `{type, height, water, walk, jump, wall}` |
 | `heightAt(x,y)` | 原始层级 0/1/2（渲染热路径专用，不建对象；出界按0，世界边缘不画崖） |
 | `walkable(x,y)` / `jumpable(x,y)` / `isWater(x,y)` | 通行判定（水与墙阻挡，height=1 可跳，height=2 不可走） |
 | `freeTile(x,y)` / `boxPenalty(x,y)` / `passableBox(x,y)` | 碰撞专用（零分配）：`boxPenalty` 返回 0可走/1矮障跳过/2不可走（按脚印四角内缩0.02 判形位，容许贴墙走）；`passableBox`=boxPenalty 0。player 轴分离与 enemy.stepTo 共用 |
 | `raw()` | → `{tiles, height}` 原始数组引用（大地图/小地图烘焙 `UI.bakeTerrainMap`、测试改地形用） |
 | `regionOf(x,y)` | 区域归属 |
-| `fog.reveal(x,y)` / `fog.visible(x,y)` | Q17 迷宫战争迷雾 |
+| `fog.reveal(x,y)` / `fog.visible(x,y)` | Q17 迷宫战争迷雾；`reveal` 由 player.update **每帧**调用（含传送落点/静止站立，radius6 即时光圈；原先只在移动分支内调，传送进迷宫落点全黑、6格内敌人隐身挨打） |
 | `TYPE` | 瓦片枚举 |
 
 ## 6. LG.Path / LG.Camera
@@ -142,7 +142,21 @@
 
 ### 7.8 LG.Save（js/game/save.js）
 - `save(slot)` `load(slot)` `listSlots()` `remove(slot)` `exportSlot/importSlot`
-- `autosave()`（60s+卸载前） `snapshot()`；存 `{seed, player, inv, quest, difficulty}`（Q59 种子+增量）
+- `raw(slot)` 读档原文（不重建世界，beginGame 判定用）；`apply(d)` 状态恢复——
+  假定世界已按 `d.seed` 生成且 Quest.init/NPC/Enemy 就位，恢复位置/等级/背包/任务/难度/
+  宝箱整表替换；`expTo` 不入档按 `player.expNeed(level)` 重算，旧存档缺 `mode/chests` 字段有缺省兜底
+- `snapshot()` 存 `{seed, ts, difficulty, player, mode, inv, quest, chests}`（Q59 种子+增量）
+- `autosave()`（阶段十五，bootWorld 调用一次）**三类自动存档触发器**：
+  ① 进世界立即落档 + 每 60s 定时；② 关键事件 `levelup`/`quest_done`/`enter_region`/
+  `chest_open`/BOSS 击杀；③ 页面生命周期 `visibilitychange`(切后台)/`pagehide`/`beforeunload`
+  ——Android WebView 划掉任务不保证触发 beforeunload，visibilitychange 是手机端主力；
+  全部经 `flush()` 仅在 `scene==='game'` 落档，事件监听绑一次防 bootWorld 重复订阅
+- `hasSave(slot)` 主菜单判定；`setContinue(v)/consumeContinue()` "继续游戏"意向（单次消费，
+  联机大厅入口先清零防误带档）
+- 自动读取链路：主菜单 `#mm-start`（有档时文案="继续游戏"，id 不变）→ `beginGame(ev)`
+  单人且意向置位 → `bootWorld(saved)` 跳过角色创建按档续玩；`#mm-new`("新游戏")清意向
+  重走创建并覆盖槽1；迷雾不入档（重进重探）
+- 中途读档（设置页 `#s-load`）走 `load(slot)`：重建世界 + apply + 敌人/NPC 刷新 + `_lastRegion` 清空
 
 ### 7.9 LG.UI（js/game/ui.js）
 - `init(canvas)` `drawHUD()` `toast(msg)` `panel(title,html)` `closePanel()`
@@ -151,7 +165,8 @@
   用户在 menu 场景关掉最后一个面板（✕/语言切换/读档）时 `closePanel()` 自动回弹主菜单（`Engine.openMenu`），
   避免场景停在 menu 却无任何入口；game 场景关闭即回游戏，无回弹。
 - `drawHUD()` 阶段十二重绘为雕纹铭牌风：四角金铆钉状态板（等级章/十段刻度血条/鎏金经验条/银币药水图标）、
-  右上攻击模式徽章（绿/金/灰宝石=开/半/关）、底部 BOSS 金框血条；坐标一律 CSS 像素（DPR≥2 下 canvas.width 会错位）
+  右上攻击模式徽章（绿/金/灰宝石=开/半/关）、BOSS 金框血条（**触屏横屏 W>H 时置顶居中 bby=34**，
+  防固定 H-210 在矮屏落到屏幕中部切过 BOSS 本体；竖屏 H-210、桌面 H-62 保持底部）；坐标一律 CSS 像素（DPR≥2 下 canvas.width 会错位）
 - 五页：`renderBag() renderStats() renderQuests() renderMap() renderSettings()`（Q50，前三个 return 面板对象供 toggle 识别）
 - `renderBag()` 结构（阶段十二）：`.panel-bag` 显式 640 宽（grid auto-fill 在 shrink-to-fit 下会塌成 1 列）+
   `.eq-col` 装备列带 `.slot-tag` 槽位标签 + `.bag-grid` 40 格 + `.item-card` 详情卡；小屏（≤720px）装备横排单行
@@ -168,6 +183,10 @@
   右下小地图（96/128 物理像素，复用 `bakeTerrainMap` 1.2s 重烘焙 + 玩家白点 + `hudObjective()` 目标金菱形 + 金框）
 - `bakeTerrainMap(g,S)`：按 `Terrain.raw()` 逐像素烘焙真实地形（类型色+高差增亮/压暗+迷宫未探索压黑），大地图(480)/小地图(128) 共用
 - 地图页点击即传送（Q13）；设置含音量/亮度/按键/语言（Q49/Q57）
+- `renderMap()` 缩放视图（2026-10-14）：内部态 `mapV={x0,y0,z}`，**z∈[1,8] 跨面板开关持久**；
+  滚轮锚点缩放、双指捏合（锚在两指中点）、`－/＋` 按钮（`#bm-out`/`#bm-in`，缩放标签 `#bm-zoom`，
+  步进0.5）、指针捕获拖拽平移 + 触屏单指平移（拖拽/捏合超阈值置 `panned` 抑制点击传送）、
+  点击传送按当前视图换算世界坐标、打开时玩家不在可见区自动对焦玩家、画布 `touch-action:none`
 
 ## 8. 联机模块
 
@@ -189,6 +208,11 @@
   menu/lobby 场景每帧 `renderAmbience(dt)` 氛围背景（深渊渐变+金晕+70 粒飘升金尘），替代旧纯黑死屏
 - 主菜单入口分离（阶段十三·反馈⑦）：「开始游戏」→ `Lobby.startSolo()` 直开单人；「联机大厅」为独立入口；
   keymap.menu=Escape → `UI.escMenu()`（游戏内开关设置）
+- 存档入口（阶段十五）：`showMenu` 查 `Save.hasSave(1)`——有档时 `#mm-start` 文案变「继续游戏」
+  并追加 `#mm-new`「新游戏」（无档保持原「开始游戏」，按钮 id 不变兼容旧测试）；
+  `beginGame(ev)` 单人且 `Save.consumeContinue()` 置位 → `bootWorld(saved)` 读档续玩：
+  按档种子生成、跳过营地出生与角色创建、`buildChests()` 后 `Save.apply(saved)` 整表恢复、
+  `_lastRegion=null` 由首帧区域检测刷敌/切 BGM；`openChest()` 发 `chest_open` 促发自动存档
 - 内部职责：主循环、渲染裁剪、区域BGM切换、BOSS触发、宝箱布置、联机快照10Hz
 - 交互链路（handleHotkeys，每帧）：
   1. 点按队列 `takePress` → 键盘动作（E=交互、J=手动攻击、Q/F/空格、B/M/L、Tab、Esc=设置）
@@ -220,6 +244,7 @@
 | `open_shop/open_enhance/open_dialog/open_quests` | npc → ui | npc |
 | `toast` | 任意 → ui | msg |
 | `enter_region` | engine → 外部 | region |
+| `chest_open` | engine → save | chest（阶段十五·开宝箱触发自动存档） |
 | `start_game` | lobby → engine | `{players,host}` |
 | `net_state/net_msg/peer_input` | net → lobby/engine | 协议消息 |
 | `lang` | i18n → main | 'zh'\|'en' |

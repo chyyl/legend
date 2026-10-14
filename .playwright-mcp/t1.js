@@ -10,6 +10,13 @@ async (page) => {
   await page.goto('http://localhost:8080/index.html', { waitUntil: 'load' });
   await page.bringToFront();
   await page.waitForSelector('#mm-start', { timeout: 20000 });
+  // 阶段十五：进世界即自动存档（legend_save_1），默认上下文跨跑会残留 →
+  // 菜单变"继续游戏"跳过角色创建使 #mm-start→#cc-ok 断言失效；开跑先清档重载
+  await page.evaluate(() => {
+    Object.keys(localStorage).forEach((k) => { if (k.indexOf('legend_save_') === 0) localStorage.removeItem(k); });
+  });
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForSelector('#mm-start', { timeout: 20000 });
   out.menuBtns = await page.$$eval('.menu-btns .btn', (els) => els.map((e) => e.id + ':' + e.textContent.trim()));
   await page.screenshot({ path: SHOT + 'a1-menu.png' });
   // ⑦ 主菜单：开始游戏直开单人（不经联机大厅）

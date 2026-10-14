@@ -137,7 +137,60 @@
       前 7 反馈断言全部保持（墙1502.019/水1502.007/敌人拦停/hud四热区/ESC/任务接取/map18/trackerClick）
       脚本留存 `.playwright-mcp/t1.js`、`t2.js`（用途见同目录 README）
 
+## 阶段十四：玩家反馈三 Bug 修复 + 测试基建（P0）★ 2026-10-14 完成
+> 玩家反馈原话：「迷宫走不出去，地图不能放大，BOSS血条竟然可以重叠」——三项全修复，t1/t2/t3 回归全绿
+
+### 三 Bug 修复
+- [x] 14.1 「迷宫走不出去」→ terrain.generate() 中 buildMaze/buildRoads **顺序调换**（先迷宫后道路）：
+      道路后铺才能打进迷宫、贯通出入口并清平中心（原顺序迷宫把 240×240 刷成墙覆盖道路成"密封盒"，
+      中心也是墙、BOSS 落墙里）；营地→中心 184 采样 badCount 4→0，中心可走
+- [x] 14.2 「地图不能放大」→ renderMap 重写：离屏底图 + 视图态 `mapV={x0,y0,z}`（**z∈[1,8] 跨面板开关持久**）：
+      滚轮锚点缩放、双指捏合（锚在两指中点）、－/＋ 按钮（`#bm-out`/`#bm-in`，标签 `#bm-zoom` 步进0.5）、
+      指针捕获拖拽 + 触屏单指平移（拖拽/捏合超阈值置 panned 抑制误传送）、点击传送按当前视图换算世界坐标、
+      打开时玩家不在可见区自动对焦、画布 touch-action:none；i18n `teleport_hint` 同步「滚轮或双指缩放」
+- [x] 14.3 「BOSS血条竟然可以重叠」→ drawHUD 血条定位 topBar 分支：触屏横屏（coarse && W>H）**置顶居中**
+      （bby=34、宽 min(W×0.5,540)）——固定 H-210 在矮屏（390~440 高）会落到屏幕中部切过 BOSS 本体；
+      竖屏 H-210 / 桌面 H-62 保持底部不变
+
+### 连带修复
+- [x] 14.4 迷宫雾静止全黑：`fog.reveal` 原在 player.update 的移动分支内，传送落点/站立不揭示 →
+      移出分支**每帧跟随**（regionOf 非迷宫区域提前返回，开销可忽略）；6 格内敌人不再隐身挨打
+- [x] 14.5 combat.js enemy_dead 空指针：联机同步重建敌人 region 可能为 null →
+      `e.region || Terrain.regionOf(e.x, e.y)` 兜底、lv 缺省 1（击杀 region=null 敌人不崩溃）
+
+### 测试基建
+- [x] 14.6 恢复 t1/t2（打包前清理提交误删、README 仍引用）；t2 手机端改**页面内 JS 派发**——
+      宿主机 Windows 显示缩放 110% 下 isMobile 模拟把 CDP 坐标 ×1.1 重映射，
+      `page.click('#mm-start')` 误点到联机大厅、`touchscreen.tap(375,30)` 落到屏外（非产品 bug）
+- [x] 14.7 新增 `t3.js` 三 Bug 回归（11 断言）：迷宫采样/雾跟随/缩放按钮·滚轮·拖拽不传送·
+      点击传送·缩放持久·捏合/血条横竖屏画布像素扫描（**逐行取红最大值**——血条物理高=16×U、
+      竖屏仅 8px，单行取样会踩黑边框）/region=null 击杀
+- [x] 14.8 验收：t1 桌面全量 + t2 手机 + t3 全绿、0 console 错误；docs/api.md（generate 先迷宫后道路/
+      fog 每帧揭示/drawHUD topBar/renderMap 缩放视图）、README（操作表+特色行）、
+      .playwright-mcp/README（三脚本+×1.1 陷阱）同步
+
+## 阶段十五：自动保存与读取存档 ★ 2026-10-14 完成
+> 需求：「自动保存与读取存档」——此前 save.js 只有 60s 定时 + beforeunload（手机 WebView 杀进程
+> 不触发）且无任何自动读取入口，读档后 expTo 不重算、背包不清残留、宝箱重开刷新
+
+- [x] 15.1 **自动存档三类触发器**（save.autosave，进世界调用一次）：① 立即落档+每 60s；
+      ② 关键事件 levelup/quest_done/enter_region/chest_open/BOSS 击杀（openChest 新发 chest_open）；
+      ③ 生命周期 visibilitychange(切后台)/pagehide/beforeunload——Android WebView 划掉任务只有
+      visibilitychange 可靠；flush() 仅 scene==='game' 落档、监听绑一次防重复订阅
+- [x] 15.2 **读档续玩**：showMenu 查 hasSave(1)——有档 #mm-start 变「继续游戏」+新增 #mm-new
+      「新游戏」（无档保持「开始游戏」，id 不变兼容旧测试）；beginGame 单人且 consumeContinue()
+      （意向单次消费，联机入口清零防误带档）→ bootWorld(saved) 按档种子重建、跳过角色创建/营地出生、
+      buildChests 后 apply 整表恢复、_lastRegion=null 首帧重刷区域敌人与 BGM
+- [x] 15.3 **存档内容与恢复修正**：snapshot 增 mode+chests（宝箱含已开标记，防重开无限开箱刷物品）；
+      apply 重算 expTo=player.expNeed(level)（原先读档后 100 起算导致连升）、背包定长覆写清残留、
+      hp 按新上限截断、P.spawnedHpInit=true 防首帧满血覆盖、倒地/寻路态清零；旧存档缺新字段有缺省兜底
+- [x] 15.4 **测试**：新增 t4.js 存档 E2E（9 断言：无档菜单/新游戏创建/事件存档/pagehide 存档/
+      手动读档/继续菜单/状态一致恢复/新游戏覆盖/0 错误）；t1/t3 补「开跑清档重载」——进世界即自动存档
+      会让默认上下文跨跑残留 legend_save_1 使菜单变继续游戏、#cc-ok 超时；t1/t2/t3/t4 回归全绿
+- [x] 15.5 文档同步：api.md（7.8 Save 接口/事件总线 chest_open/Engine 存档入口）、README 存档特色行
+
 ## 已修复的关键缺陷（测试记录 2026-10-14 · 阶段十二）
+
 - **关掉设置后卡死**：menu 场景关闭设置/大厅面板后场景停在 menu 但无任何入口 → closePanel 场景感知回弹主菜单
 - **背包网格塌成 1 列**：40 格竖排 86vh 长条 → grid auto-fill 在 shrink-to-fit 面板按 max-content 只算 1 列 → .panel-bag 显式宽度
 - **DPR≥2 时 HUD 右侧元素隐形**：drawHUD 用 canvas.width（物理像素）而变换已是 CSS 像素 → 改 window.innerWidth/Height

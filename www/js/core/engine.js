@@ -46,6 +46,8 @@
     Engine.scene = 'menu';
     const zh = LG.I18n.lang === 'zh';
     const lore = LG.Config.LORE[LG.I18n.lang] || '';
+    // 阶段十五：有存档时主按钮变"继续游戏"，另加"新游戏"（清意向直开=重走角色创建）
+    const hasSave = LG.Save.hasSave(1);
     const p = LG.UI.panel('', `
       <div class="menu-logo">
         <div class="logo-main">LEGEND</div>
@@ -53,7 +55,8 @@
       </div>
       <div class="menu-lore">${lore.length > 110 ? lore.slice(0, 110) + '…' : lore}</div>
       <div class="menu-btns">
-        <button class="btn primary" id="mm-start">${LG.I18n.get('start_game')}</button>
+        <button class="btn primary" id="mm-start">${LG.I18n.get(hasSave ? 'continue_game' : 'start_game')}</button>
+        ${hasSave ? `<button class="btn" id="mm-new">${LG.I18n.get('new_game')}</button>` : ''}
         <button class="btn" id="mm-lobby">${LG.I18n.get('lobby')}</button>
         <button class="btn" id="mm-set">${LG.I18n.get('settings')}</button>
         <button class="btn" id="mm-lang">中文 / EN</button>
@@ -61,8 +64,10 @@
       <div class="menu-foot">${zh ? 'HTML5 Canvas · 离线可玩 · 1-4 人联机' : 'HTML5 Canvas · Offline · 1-4 Co-op'}</div>`);
     p.classList.add('menu-panel');
     // 开始游戏 = 单人直开（不经联机大厅）；联机大厅为独立入口（拆分"开始游戏与联机大厅在一起"）
-    p.querySelector('#mm-start').onclick = () => { LG.Sound.init(); LG.Lobby.startSolo(); };
-    p.querySelector('#mm-lobby').onclick = () => { LG.Sound.init(); LG.Lobby.show(); };
+    p.querySelector('#mm-start').onclick = () => { LG.Sound.init(); LG.Save.setContinue(true); LG.Lobby.startSolo(); };
+    const mmNew = p.querySelector('#mm-new');
+    if (mmNew) mmNew.onclick = () => { LG.Sound.init(); LG.Save.setContinue(false); LG.Lobby.startSolo(); };
+    p.querySelector('#mm-lobby').onclick = () => { LG.Sound.init(); LG.Save.setContinue(false); LG.Lobby.show(); };
     p.querySelector('#mm-set').onclick = () => LG.UI.renderSettings();
     p.querySelector('#mm-lang').onclick = () => { LG.I18n.set(LG.I18n.lang === 'zh' ? 'en' : 'zh'); showMenu(); };
   }
@@ -172,30 +177,40 @@
   }
 
   /* ================= 开局（由 lobby 'start_game' 触发） ================= */
-  function beginGame() {
+  function beginGame(ev) {
     LG.UI.closePanel();
+    // 阶段十五：单人且主菜单"继续游戏"置位 → 读档续玩
+    // （意向单次消费：联机大厅等其它入口即使残留意向也只清不带档）
+    const solo = !ev || !ev.players || ev.players.length <= 1;
+    if (LG.Save.consumeContinue() && solo) {
+      const d = LG.Save.raw(1);
+      if (d) { bootWorld(d); return; }
+    }
     // 角色创建（Q51）；场景在 bootWorld（地形生成后）才切换，避免渲染空世界崩溃
     LG.UI.charCreate(() => bootWorld());
   }
 
-  function bootWorld() {
+  /* saved 传入=读档续玩（阶段十五）：按存档种子重建世界并恢复全部状态 */
+  function bootWorld(saved) {
     LG.UI.closePanel(); // 角色创建关闭时可能回弹了主菜单面板（menu 场景），此处清掉再进世界
-    // 世界生成（Q9 种子框架）
-    LG.Terrain.generate(LG.Config.SEED);
+    // 世界生成（Q9 种子框架；读档按存档种子重建 → 同种子同世界 Q59）
+    LG.Terrain.generate(saved ? saved.seed : LG.Config.SEED);
     Engine.scene = 'game'; // 地形就绪后才进入游戏场景
+    Engine._lastRegion = null; // 清区域追踪：读档/重开后首帧重新触发区域生成与 BGM
     LG.Quest.init();
     LG.Combat.init();
     LG.NPC.spawnAll();
     LG.Enemy.clear();
-    LG.Enemy.setDifficulty(LG.Net.difficulty);
-    // 出生于营地（Q12 完全开放）
+    LG.Enemy.setDifficulty(saved ? saved.difficulty : LG.Net.difficulty);
     const camp = LG.Config.REGIONS.find((r) => r.id === 'camp');
-    LG.Player.spawn(camp.cx + 2, camp.cy + 2);
-    LG.Camera.follow(LG.Player.x, LG.Player.y);
-    spawnRegionOnce(camp);
+    if (!saved) LG.Player.spawn(camp.cx + 2, camp.cy + 2); // 出生于营地（Q12 完全开放）
     buildChests();
+    // 读档恢复（须在 buildChests 之后：宝箱整表替换；新档走 camp 出生）
+    if (saved) LG.Save.apply(saved);
+    LG.Camera.follow(LG.Player.x, LG.Player.y);
+    if (!saved) spawnRegionOnce(camp); // 读档者由首帧区域检测生成所在区域敌人
     LG.Save.autosave();
-    LG.Sound.bgm(camp.id);
+    LG.Sound.bgm(saved ? ((LG.Terrain.regionOf(LG.Player.x, LG.Player.y) || {}).id || camp.id) : camp.id);
     // 教程（Q67 可跳过）
     setTimeout(() => LG.UI.tutorial(), 600);
     // 客户端开始上报（Q55 角色本地、世界随房主）
@@ -424,6 +439,7 @@
     LG.Player.gainExp(d.exp);
     d.items.forEach((it) => LG.Inv.add(it));
     LG.Sound.play('pickup');
+    LG.U.bus.emit('chest_open', ch); // 阶段十五：开宝箱触发自动存档（save.autosave 订阅）
     LG.UI.toast((LG.I18n.lang === 'zh' ? '宝箱' : 'Chest') + ': +' + d.silver + ' ' + LG.I18n.get('silver_s') +
       (d.items.length ? ' ×' + d.items.length + (LG.I18n.lang === 'zh' ? '物品' : ' items') : ''));
   }

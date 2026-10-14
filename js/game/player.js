@@ -6,6 +6,7 @@
 
    对外接口（window.LG.Player）：
      .spawn(x,y) .update(dt) .pos .level .exp .hp .maxHp
+     .expNeed(lv) 升级所需经验（save 读档重算 expTo 用）
      .gainExp(n) .takeDamage(n) .heal(n) .usePotion() .block() .jump()
      .setMode(m) 'on'|'off'|'half'   .mode
      .moveTo(x,y)  设置点击寻路目标
@@ -175,6 +176,6 @@
     get path() { return P.path; },
     _raw: P,
     spawn, update, gainExp, takeDamage, heal, usePotion, block, jump, setMode, moveTo,
-    rescue, revive,
+    rescue, revive, expNeed,
   };
 })();
