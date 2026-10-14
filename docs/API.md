@@ -177,7 +177,11 @@
 - 五页：`renderBag() renderStats() renderQuests() renderMap() renderSettings()`（Q50，前三个 return 面板对象供 toggle 识别）
 - `renderBag()` 结构（阶段十二）：`.panel-bag` 显式 640 宽（grid auto-fill 在 shrink-to-fit 下会塌成 1 列）+
   `.eq-col` 装备列带 `.slot-tag` 槽位标签 + `.bag-grid` 40 格 + `.item-card` 详情卡；小屏（≤720px）装备横排单行
-- `renderSettings()`：menu 场景打开时追加 `#s-back` 返回按钮（回 `Engine.openMenu`）
+- `renderSettings()`：menu 场景打开时追加 `#s-back` 返回按钮（回 `Engine.openMenu`）；
+  阶段十九追加 `#s-log`「更新日志」按钮（开 `renderChangelog` 子页）与 `#s-ver` 当前版本行
+- `renderChangelog()`（阶段十九）：更新日志页，数据源 `LG.CHANGELOG`（`js/generated/changelog.js`，
+  由仓库根 `CHANGELOG.md` 经 `npm run sync` 生成，每次开发会话至少一条）；条目=版本+日期+要点列表，
+  底部显示当前版本（`LG.Updater.current()`）；`dataset.page='settings'` 归设置语义关闭
 - `charCreate(cb)`（Q51，预览走 `.cc-frame` 展示框、性别按钮 `.btn.on` 选中态） `dialog(npc,lines)` `tutorial()`（Q67 可跳过）
 - `hudHit(c)`（P0 阶段十三）→ `'mode'|'settings'|'tracker'|'minimap'|null`：HUD 热区命中，坐标=物理 CSS 像素；
   drawHUD 每帧缓存 `hudRects`，engine 点击分发：mode→切模式、settings→设置页、tracker→任务页、minimap→大地图页
@@ -266,12 +270,28 @@
 
 ---
 
+### 9.1 LG.Updater（js/core/updater.js）— 网页版自动更新（阶段十九）
+
+- `current()` → 当前版本号（= `LG.CHANGELOG[0].v`，生成文件缺失回退 `'dev'`）
+- `check()`：无缓存 `fetch('version.json')`（构建产物，`{v,date}`）；与当前版本一致或
+  `file://`/断网/未部署时静默跳过。发现新版：**主菜单场景自动重载**（`?vup=` 冲刷 index.html
+  自身缓存，其内资源带构建时内容哈希 `?v=` 必然拉新）；`sessionStorage` 键 `legend_up_at_<ver>`
+  单次防循环（坏部署只重载一次，再发现走 `confirm` 手动确认）；游戏进行中不打断，下次进菜单自动生效
+- 调用点：`main.js` 启动后 1.5s 检测一次 + 每 10 分钟复检（仅 `scene==='menu'` 生效）
+- 部署形态：APK 内置 www 与 version.json 恒同版 → 永不触发（APK 更新仍为重装包）；
+  网页部署（任意静态托管 www/）时自动更新生效；开发根目录经 build-www 同步写入的 version.json 与
+  部署行为一致（避免 fetch 404 控制台噪音）
+
 ## 10. 打包与运行
 
 - **本地运行**：任意静态服务器（`python -m http.server 8080`）或直接双击 `index.html`（file:// 亦可，无 ES-module 依赖）
 - **构建链**：`npm run sync`（= `node tools/build-www.mjs` 重建 `www/` + `npx cap sync android`）
   → `cd android && ./gradlew.bat assembleDebug|assembleRelease`（Linux 用 `./gradlew`）
-  - 产物 `android/app/build/outputs/apk/{debug,release}/`；归档 `dist/LEGEND-v1.0-{release,debug}.apk`
+  - `tools/build-www.mjs`（阶段十九扩展）：① 解析仓库根 `CHANGELOG.md`（**版本号唯一来源，
+    每次开发会话至少一条**）→ 生成 `js/generated/changelog.js`（游戏内 `LG.CHANGELOG`）；
+    ② 写 `www/version.json`（+ 仓库根同名文件，gitignore，供自动更新检测）；
+    ③ `www/index.html` 全部资源 URL 追加 `?v=<www 内容哈希>`（部署新版后浏览器必然拉新资源）
+  - 产物 `android/app/build/outputs/apk/{debug,release}/`；归档 `dist/LEGEND-v1.2-{release,debug}.apk`
   - **minSdk 23（Android 6+）**以 `android/variables.gradle` 为准（Capacitor 7 底线，Android 5 放弃）；
     `capacitor.config.json` android 块与之对齐
   - **签名**：`android/keystore/legend-release.jks`（alias `legend`/密码 `legend2026`）挂

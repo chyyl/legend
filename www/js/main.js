@@ -35,6 +35,13 @@
       const boot = document.getElementById('boot');
       if (boot) boot.classList.add('hide');
       LG.Engine.start(); // 进入主菜单（含联机大厅入口）
+
+      // 自动更新检测（阶段十九）：启动后延迟检测（菜单安全时机，新版自动重载拉新资源），
+      // 之后每 10 分钟复检一次（仅主菜单内生效，游戏进行中不打断；详见 core/updater.js）
+      if (LG.Updater) {
+        setTimeout(() => LG.Updater.check(), 1500);
+        setInterval(() => { if (LG.Engine.scene === 'menu') LG.Updater.check(); }, 600000);
+      }
     }, 200);
   }
 

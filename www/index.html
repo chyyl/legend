@@ -9,11 +9,13 @@
     3) 提供 Canvas 舞台与加载遮罩
 
   依赖顺序（下述脚本彼此通过 window.LG 命名空间通信，互不直接引用内部实现）：
-    core/config  -> core/utils -> core/assets -> core/input -> core/audio
-    -> world/terrain -> world/pathfinding -> world/camera
-    -> data/i18n -> game/loot -> game/inventory -> game/player -> game/enemy
+    data/i18n -> core/config -> core/utils -> core/assets -> core/input
+    -> audio/audio -> world/terrain -> world/pathfinding -> world/camera
+    -> game/loot -> game/inventory -> game/player -> game/enemy
     -> game/combat -> game/quest -> game/npc -> game/save -> game/ui
-    -> net/net -> net/lobby -> core/engine -> main
+    -> net/net -> net/lobby -> core/engine -> core/updater -> main
+    另有生成文件 js/generated/changelog.js（tools/build-www.mjs 从 CHANGELOG.md 生成，
+    提供 LG.CHANGELOG 数据；缺失时游戏内更新日志页显示"暂无"，不影响其余功能）
 
   接口文档：docs/api.md
   修改守则：新增功能请新建文件并在本注释区登记，勿改动其他文件内部实现。
@@ -29,7 +31,7 @@
   <title>LEGEND 传奇</title>
   <!-- 内联空图标，避免 favicon.ico 404 请求 -->
   <link rel="icon" href="data:," />
-  <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="css/style.css?v=fc4f6def" />
 </head>
 <body>
   <!-- 游戏主画布：所有像素画面均绘制于此 -->
@@ -47,32 +49,35 @@
     </div>
   </div>
 
+  <!-- ===== 生成层（tools/build-www.mjs 从 CHANGELOG.md 生成，勿手改） ===== -->
+  <script src="js/generated/changelog.js?v=fc4f6def"></script>
   <!-- ===== 核心层 ===== -->
-  <script src="js/data/i18n.js"></script>
-  <script src="js/core/config.js"></script>
-  <script src="js/core/utils.js"></script>
-  <script src="js/core/assets.js"></script>
-  <script src="js/core/input.js"></script>
-  <script src="js/audio/audio.js"></script>
+  <script src="js/data/i18n.js?v=fc4f6def"></script>
+  <script src="js/core/config.js?v=fc4f6def"></script>
+  <script src="js/core/utils.js?v=fc4f6def"></script>
+  <script src="js/core/assets.js?v=fc4f6def"></script>
+  <script src="js/core/input.js?v=fc4f6def"></script>
+  <script src="js/audio/audio.js?v=fc4f6def"></script>
   <!-- ===== 世界层 ===== -->
-  <script src="js/world/terrain.js"></script>
-  <script src="js/world/pathfinding.js"></script>
-  <script src="js/world/camera.js"></script>
+  <script src="js/world/terrain.js?v=fc4f6def"></script>
+  <script src="js/world/pathfinding.js?v=fc4f6def"></script>
+  <script src="js/world/camera.js?v=fc4f6def"></script>
   <!-- ===== 玩法层 ===== -->
-  <script src="js/game/loot.js"></script>
-  <script src="js/game/inventory.js"></script>
-  <script src="js/game/player.js"></script>
-  <script src="js/game/enemy.js"></script>
-  <script src="js/game/combat.js"></script>
-  <script src="js/game/quest.js"></script>
-  <script src="js/game/npc.js"></script>
-  <script src="js/game/save.js"></script>
-  <script src="js/game/ui.js"></script>
+  <script src="js/game/loot.js?v=fc4f6def"></script>
+  <script src="js/game/inventory.js?v=fc4f6def"></script>
+  <script src="js/game/player.js?v=fc4f6def"></script>
+  <script src="js/game/enemy.js?v=fc4f6def"></script>
+  <script src="js/game/combat.js?v=fc4f6def"></script>
+  <script src="js/game/quest.js?v=fc4f6def"></script>
+  <script src="js/game/npc.js?v=fc4f6def"></script>
+  <script src="js/game/save.js?v=fc4f6def"></script>
+  <script src="js/game/ui.js?v=fc4f6def"></script>
   <!-- ===== 联机层 ===== -->
-  <script src="js/net/net.js"></script>
-  <script src="js/net/lobby.js"></script>
+  <script src="js/net/net.js?v=fc4f6def"></script>
+  <script src="js/net/lobby.js?v=fc4f6def"></script>
   <!-- ===== 引导层 ===== -->
-  <script src="js/core/engine.js"></script>
-  <script src="js/main.js"></script>
+  <script src="js/core/engine.js?v=fc4f6def"></script>
+  <script src="js/core/updater.js?v=fc4f6def"></script>
+  <script src="js/main.js?v=fc4f6def"></script>
 </body>
 </html>

@@ -9,11 +9,13 @@
     3) 提供 Canvas 舞台与加载遮罩
 
   依赖顺序（下述脚本彼此通过 window.LG 命名空间通信，互不直接引用内部实现）：
-    core/config  -> core/utils -> core/assets -> core/input -> core/audio
-    -> world/terrain -> world/pathfinding -> world/camera
-    -> data/i18n -> game/loot -> game/inventory -> game/player -> game/enemy
+    data/i18n -> core/config -> core/utils -> core/assets -> core/input
+    -> audio/audio -> world/terrain -> world/pathfinding -> world/camera
+    -> game/loot -> game/inventory -> game/player -> game/enemy
     -> game/combat -> game/quest -> game/npc -> game/save -> game/ui
-    -> net/net -> net/lobby -> core/engine -> main
+    -> net/net -> net/lobby -> core/engine -> core/updater -> main
+    另有生成文件 js/generated/changelog.js（tools/build-www.mjs 从 CHANGELOG.md 生成，
+    提供 LG.CHANGELOG 数据；缺失时游戏内更新日志页显示"暂无"，不影响其余功能）
 
   接口文档：docs/api.md
   修改守则：新增功能请新建文件并在本注释区登记，勿改动其他文件内部实现。
@@ -47,6 +49,8 @@
     </div>
   </div>
 
+  <!-- ===== 生成层（tools/build-www.mjs 从 CHANGELOG.md 生成，勿手改） ===== -->
+  <script src="js/generated/changelog.js"></script>
   <!-- ===== 核心层 ===== -->
   <script src="js/data/i18n.js"></script>
   <script src="js/core/config.js"></script>
@@ -73,6 +77,7 @@
   <script src="js/net/lobby.js"></script>
   <!-- ===== 引导层 ===== -->
   <script src="js/core/engine.js"></script>
+  <script src="js/core/updater.js"></script>
   <script src="js/main.js"></script>
 </body>
 </html>

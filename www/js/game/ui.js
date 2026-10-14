@@ -420,9 +420,11 @@
       <div style="text-align:center;margin-top:8px">
         <button class="btn" id="s-map">${T()('minimap_view')}</button>
         <button class="btn" id="s-key">${T()('keybind')}</button>
+        <button class="btn" id="s-log">${T()('changelog')}</button>
         <button class="btn" id="s-save">${T()('save')}</button>
         <button class="btn" id="s-load">${T()('load')}</button>
-      </div>`);
+      </div>
+      <div style="text-align:center;margin-top:6px;font-size:12px;color:#8a8f9e" id="s-ver">LEGEND ${LG.Updater ? LG.Updater.current() : 'dev'}</div>`);
     const setB = (v) => { if (LG.Engine && LG.Engine.applyBrightness) LG.Engine.applyBrightness(v); LG.U.LS.set('bright', v); };
     setB(bright);
     p.querySelector('#s-music').oninput = (e) => LG.Sound.setVolume(+e.target.value, 'music');
@@ -430,6 +432,7 @@
     p.querySelector('#s-bright').oninput = (e) => setB(+e.target.value);
     p.querySelector('#s-lang').onclick = () => { LG.I18n.set(LG.I18n.lang === 'zh' ? 'en' : 'zh'); closePanel(); LG.U.bus.emit('lang_changed'); };
     p.querySelector('#s-map').onclick = () => renderMap();
+    p.querySelector('#s-log').onclick = () => renderChangelog();
     p.querySelector('#s-key').onclick = () => renderKeybind();
     p.querySelector('#s-save').onclick = () => { LG.Save.save(1); toast('已保存'); };
     p.querySelector('#s-load').onclick = () => { LG.Save.load(1); toast('已读取'); closePanel(); };
@@ -445,6 +448,23 @@
     }
     return p;
   }
+  /* ---------- 更新日志页（阶段十九；数据源 LG.CHANGELOG，由 CHANGELOG.md 经 sync 生成） ---------- */
+  function renderChangelog() {
+    const list = (window.LG.CHANGELOG || []);
+    let body = '';
+    if (!list.length) {
+      body = '<div style="text-align:center;color:#8a8f9e">暂无更新日志</div>';
+    } else {
+      body = list.map((e) => `
+        <div class="cl-ver"><b>${e.v}</b><span class="cl-date">${e.date}</span></div>
+        <ul class="cl-items">${e.items.map((it) => `<li>${it}</li>`).join('')}</ul>`).join('');
+    }
+    body += `<div style="text-align:center;margin-top:8px;color:#8a8f9e">当前版本 <b style="color:#d8b45a">${LG.Updater ? LG.Updater.current() : 'dev'}</b></div>`;
+    const p = panel(T()('changelog'), `<div class="cl-wrap">${body}</div>`);
+    p.dataset.page = 'settings'; // 设置页子页：ESC/热区按设置语义关闭
+    return p;
+  }
+
   function renderKeybind() {
     const acts = ['up', 'down', 'left', 'right', 'attack', 'block', 'jump', 'potion', 'bag', 'map', 'quest', 'menu'];
     let html = '';
@@ -922,5 +942,5 @@
   }
 
   LG.UI = { init, drawHUD, toast, panel, closePanel, togglePage, renderBag, renderStats, renderQuests,
-    renderMap, renderSettings, charCreate, dialog, tutorial, drawItemIcon, hudHit, escMenu };
+    renderMap, renderSettings, renderChangelog, charCreate, dialog, tutorial, drawItemIcon, hudHit, escMenu };
 })();

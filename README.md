@@ -53,6 +53,14 @@ python -m http.server 8080      # 终端2：静态服务
 - **存档**：进世界即自动存档（60 秒定时 + 升级/任务/换区/开箱/BOSS 关键事件 + 切后台/关页生命周期，三类触发），刷新后主菜单「继续游戏」原地续玩（等级/背包/任务/宝箱全恢复），「新游戏」重开覆盖
 - **联机**：1-4 人房主权威，单人也是 1 人房；角色存本地、世界随房主
 
+## 🔄 更新日志与自动更新
+
+- **更新日志**：仓库根 [`CHANGELOG.md`](CHANGELOG.md)（**每次开发会话至少一条**，同时是版本号唯一来源），
+  游戏内「设置 → 更新日志」可查看最近条目（`npm run sync` 自动生成 `js/generated/changelog.js`）
+- **网页版自动更新**：把 `www/` 部署到任意静态托管后，玩家打开游戏时自动检测 `version.json`，
+  发现新版在主菜单自动重载拉新资源（游戏进行中不打断，下次进菜单生效）；离线与 file:// 直开静默跳过
+- **APK 更新**：内置资源恒为打包时版本（断网可玩优先），发新版后重装 `dist/LEGEND-v1.x-release.apk`
+
 ## 📦 打包发布
 
 ### Android APK（离线+联机全功能）
@@ -63,8 +71,8 @@ python -m http.server 8080      # 终端2：静态服务
 
 | 包 | 路径 | 说明 |
 |---|---|---|
-| Release（已签名） | `dist/LEGEND-v1.0-release.apk` | 日常安装这个（3.5MB） |
-| Debug | `dist/LEGEND-v1.0-debug.apk` | 排查用，可连 logcat（4.4MB） |
+| Release（已签名） | `dist/LEGEND-v1.2-release.apk` | 日常安装这个（约3.5MB） |
+| Debug | `dist/LEGEND-v1.2-debug.apk` | 排查用，可连 logcat（约4.4MB） |
 
 ```bash
 # 1) 每次网页改动后重建 www 并同步进安卓工程（JS 改动必跑；sync = build-www + cap sync）
@@ -150,6 +158,8 @@ legend/
 3. 所有数值只改 `js/core/config.js`，禁止散落硬编码
 4. 全部文案走 `js/data/i18n.js`，统一「敌人」术语（不叫怪物）
 5. 全原创美术（程序化生成）与文案，规避版权风险
+6. **每次开发会话结束前**：在 `CHANGELOG.md` 顶部补一条（`## [vX.Y.Z] - 日期`，版本号随之递进），
+   再跑 `npm run sync`——版本号、游戏内更新日志、网页自动更新三者均由它驱动
 
 ## ❓ 常见问题
 
