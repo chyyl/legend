@@ -1,0 +1,27 @@
+{
+  "name": "legend",
+  "version": "1.0.0",
+  "description": "> 2D 像素动作 RPG，纯 HTML5 + Canvas 实现，参考《我的世界：地下城2》特征设计。 > 1-4 人 WebRTC P2P 联机，支持 Android APK / iOS / Windows / 纯网页四端离线运行。",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chyyl/legend.git"
+  },
+  "keywords": [],
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/chyyl/legend/issues"
+  },
+  "homepage": "https://github.com/chyyl/legend#readme",
+  "dependencies": {
+    "@capacitor/android": "^7.6.9",
+    "@capacitor/cli": "^7.6.9",
+    "@capacitor/core": "^7.6.9"
+  }
+}
