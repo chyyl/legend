@@ -132,17 +132,19 @@
     return true;
   }
 
-  /* 用 BFS 从营地向各区域中心铺一条路，确保全程可达 */
+  /* 环形主干道（2026-10-14 反馈"路线应类似一个圈"）：按 REGIONS 数组顺序（=等级推进顺序，
+     营地→边境长城→…→终末之战）把相邻区域串成一条闭合环线，末段终末之战回接收口——
+     沿环走总能回到出发点，联机队友有统一巡线不易走散。
+     （旧实现为营地→各区放射直线：星型无回路，跨区只能越野穿插）
+     逐段直线 lerp 铺 3 宽路并清零高度；水面跳过（可通行性由 Path A* 兜底） */
   function buildRoads() {
-    const camp = LG.Config.REGIONS.find((r) => r.id === 'camp');
-    LG.Config.REGIONS.forEach((rg) => {
-      if (rg === camp) return;
-      let x = camp.cx, y = camp.cy;
-      const tx = rg.cx, ty = rg.cy;
-      const steps = Math.ceil(Math.hypot(tx - x, ty - y));
+    const R = LG.Config.REGIONS;
+    for (let ri = 0; ri < R.length; ri++) {
+      const a = R[ri], b = R[(ri + 1) % R.length]; // 末段 b 回到营地 → 闭环
+      const steps = Math.ceil(Math.hypot(b.cx - a.cx, b.cy - a.cy));
       for (let s = 0; s < steps; s++) {
-        const nx = Math.round(LG.U.lerp(x, tx, s / steps));
-        const ny = Math.round(LG.U.lerp(y, ty, s / steps));
+        const nx = Math.round(LG.U.lerp(a.cx, b.cx, s / steps));
+        const ny = Math.round(LG.U.lerp(a.cy, b.cy, s / steps));
         // 铺 3 宽的道路并清空高度，保证可通行
         for (let oy = -1; oy <= 1; oy++)
           for (let ox = -1; ox <= 1; ox++) {
@@ -152,7 +154,7 @@
             if (tiles[i] !== T_WATER) { tiles[i] = T_ROAD; height[i] = 0; }
           }
       }
-    });
+    }
   }
 
   /* 黑暗迷宫：在 maze 区域用递归回溯生成迷宫，墙=T_WALL，通路=T_ROAD */

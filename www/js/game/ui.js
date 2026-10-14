@@ -244,7 +244,8 @@
         }
         const h = hs[i];
         const c = rgb[ts[i]] || rgb[0];
-        const k = h === 2 ? 0.62 : h === 1 ? 1.14 : 1; // 高山压暗（不可走提示）；台地增亮
+        // 高差对比（2026-10-14 反馈"高低不明显"：1.14→1.28 台地增亮、0.62→0.52 高山压暗）
+        const k = h === 2 ? 0.52 : h === 1 ? 1.28 : 1;
         d[o] = Math.min(255, c[0] * k);
         d[o + 1] = Math.min(255, c[1] * k);
         d[o + 2] = Math.min(255, c[2] * k);
@@ -299,6 +300,21 @@
       // 玩家位置
       g.fillStyle = '#ff5050';
       g.fillRect((LG.Player.x * S - mapV.x0) * z - 3, (LG.Player.y * S - mapV.y0) * z - 3, 6, 6);
+      // 联机队友青点+名字（2026-10-14 反馈"玩家容易走散"：大地图看到彼此，找得到人）
+      g.textAlign = 'center';
+      g.font = '10px "LegendKai", sans-serif';
+      Object.keys(LG.Net.peers || {}).forEach((id) => {
+        const pr = LG.Net.peers[id];
+        if (!pr || pr.x == null) return;
+        const fx = (pr.x * S - mapV.x0) * z, fy = (pr.y * S - mapV.y0) * z;
+        if (fx < -20 || fx > 500 || fy < -20 || fy > 500) return;
+        g.fillStyle = '#6cf';
+        g.fillRect(fx - 3, fy - 3, 6, 6);
+        g.lineWidth = 2; g.strokeStyle = 'rgba(0,0,0,0.8)';
+        g.strokeText(pr.name || '队友', fx, fy + 14);
+        g.fillStyle = '#aee6ff';
+        g.fillText(pr.name || '队友', fx, fy + 14);
+      });
       const zb = p.querySelector('#bm-zoom'); if (zb) zb.textContent = mapV.z.toFixed(1) + '×';
     }
     /* 打开时若玩家不在可见区内（上次放大后离场），自动对焦玩家 */
@@ -729,6 +745,13 @@
     // 玩家白点
     g.fillStyle = '#fff';
     g.fillRect(x + LG.Player.x * k - 2, y + LG.Player.y * k - 2, 4, 4);
+    // 联机队友青点（2026-10-14 反馈"玩家容易走散"：小地图上看到彼此位置；色同世界内名字色）
+    Object.keys(LG.Net.peers || {}).forEach((id) => {
+      const pr = LG.Net.peers[id];
+      if (!pr || pr.x == null) return;
+      g.fillStyle = '#6cf';
+      g.fillRect(x + pr.x * k - 2, y + pr.y * k - 2, 4, 4);
+    });
     // 当前任务目标金菱形（与追踪条同源 hudObjective；可提交/无坐标时不画）
     const obj = hudObjective();
     if (obj.tgt) {

@@ -313,8 +313,8 @@
     return mk(key, T, T, (g) => {
       g.drawImage(tile(type), 0, 0);
       const cols = TILE_COLORS[type] || TILE_COLORS.grass;
-      // 层级受光：越高越亮（白膜提亮）
-      if (level > 0) { g.fillStyle = 'rgba(255,255,255,' + (0.065 * level).toFixed(3) + ')'; g.fillRect(0, 0, T, T); }
+      // 层级受光：越高越亮（白膜提亮；2026-10-14 反馈"高低不明显"→ 0.065→0.11 加强台地/平地反差）
+      if (level > 0) { g.fillStyle = 'rgba(255,255,255,' + (0.11 * level).toFixed(3) + ')'; g.fillRect(0, 0, T, T); }
       // 水面高光（原引擎每帧蓝膜，烘焙进瓦片省一次 fillRect）
       if (type === 'water') { g.fillStyle = 'rgba(120,180,255,0.15)'; g.fillRect(0, 0, T, T); }
       // 南向崖壁挤出带
@@ -326,12 +326,12 @@
         for (let yy = y0 + 2; yy < T; yy += 3) g.fillRect(0, yy, T, 1);
         g.fillStyle = lighten(cols[0], 0.35); g.fillRect(0, y0, T, 1); // 顶缘受光棱
       }
-      // 北邻更高：崖壁投影落本片顶边
+      // 北邻更高：崖壁投影落本片顶边（0.16→0.22，配合"高低不明显"反馈加强）
       const shade = Math.min(Math.max(northDelta, 0), 2);
-      if (shade > 0) { g.fillStyle = 'rgba(0,0,0,0.16)'; g.fillRect(0, 0, T, 2 + shade * 2); }
-      // 本片高于北邻：顶边亮棱
+      if (shade > 0) { g.fillStyle = 'rgba(0,0,0,0.22)'; g.fillRect(0, 0, T, 2 + shade * 2); }
+      // 本片高于北邻：顶边亮棱（0.12→0.22）
       const rim = Math.min(Math.max(-northDelta, 0), 2);
-      if (rim > 0 && cliff === 0) { g.fillStyle = 'rgba(255,255,255,0.12)'; g.fillRect(0, 0, T, 1); }
+      if (rim > 0 && cliff === 0) { g.fillStyle = 'rgba(255,255,255,0.22)'; g.fillRect(0, 0, T, 1); }
     });
   }
 

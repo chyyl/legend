@@ -65,17 +65,22 @@ async (page) => {
   await page.goto('http://localhost:8080/index.html', { waitUntil: 'load' });
   await startGame(page);
 
-  // A1 迷宫贯通：营地(1500,1500)→迷宫中心(1300,800) 直线 184 采样全可走 + 中心可走
+  // A1 迷宫贯通（阶段十八：主干道改环形，旧"营地→迷宫直线全可走"依赖星型放射路，语义失效）
+  // 现断言：farm→maze 环线段 184 采样全可走（水面除外）＝路打进了迷宫 + 营地→迷宫 A* 可达
   out.maze = await page.evaluate(() => {
-    const camp = LG.Config.REGIONS.find((r) => r.id === 'camp');
-    const mz = LG.Config.REGIONS.find((r) => r.id === 'maze');
+    const R = LG.Config.REGIONS;
+    const camp = R.find((r) => r.id === 'camp');
+    const farm = R.find((r) => r.id === 'farm');
+    const mz = R.find((r) => r.id === 'maze');
     let bad = 0; const N = 183;
     for (let i = 0; i <= N; i++) {
-      const x = camp.cx + (mz.cx - camp.cx) * i / N;
-      const y = camp.cy + (mz.cy - camp.cy) * i / N;
-      if (!LG.Terrain.passableBox(x, y)) bad++;
+      const x = farm.cx + (mz.cx - farm.cx) * i / N;
+      const y = farm.cy + (mz.cy - farm.cy) * i / N;
+      if (!LG.Terrain.passableBox(x, y) && !LG.Terrain.isWater(x | 0, y | 0)) bad++;
     }
-    return { badCount: bad, centerWalkable: LG.Terrain.passableBox(mz.cx, mz.cy) };
+    const path = LG.Path.find(camp.cx, camp.cy, mz.cx, mz.cy, 4000);
+    return { badCount: bad, centerWalkable: LG.Terrain.passableBox(mz.cx, mz.cy),
+             reachable: !!path && path.length > 0 };
   });
 
   // A2 迷宫雾每帧跟随：传送到中心后静止不动，落点即揭示（radius6 内可见、6 格外未揭示）
@@ -220,7 +225,7 @@ async (page) => {
   /* ================= 汇总断言 ================= */
   const num = (s) => parseFloat(s) || 0;
   out.pass = {
-    maze: out.maze.badCount === 0 && out.maze.centerWalkable === true,
+    maze: out.maze.badCount === 0 && out.maze.centerWalkable === true && out.maze.reachable === true,
     fog: out.fog.center === true && out.fog.r5 === true && out.fog.r7 === false && !!out.fogTp.at,
     mapZoom: num(out.map.zIn) > num(out.map.z0) && num(out.map.zWheel) > num(out.map.zIn),
     mapDragNoTp: out.map.dragDist < 0.5 && out.map.dragPanelOpen === true,
