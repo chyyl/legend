@@ -126,6 +126,19 @@ html, body {
   from { opacity: 0; transform: translate(-50%, -47%) scale(.97); }
   to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 }
+/* ===== 大地图画布：随面板宽度、上限 480 的方形（尺寸定义归 CSS，ui.js 只管绘制） ===== */
+#bigmap {
+  display: block; margin: 0 auto;
+  width: min(480px, 100%);
+  touch-action: none; cursor: grab;
+}
+/* 矮视口（横屏手机 ≈390 高等）：86vh 面板放不下 480 方图，overflow:hidden 会把地图
+   底部裁掉——裁剪区外的触点命中的是底层游戏画布，传送点了没反应（阶段十七修复）。
+   面板放宽到 96vh，画布按可用高度收敛（标题 69 + 缩放行 34 + 提示 24 + 边框 ≈140）。 */
+@media (max-height: 560px) {
+  .panel { max-height: 96vh; overflow: auto; }
+  #bigmap { width: calc(96vh - 140px); max-width: 100%; }
+}
 /* 四角 L 形金饰（多层渐变定位，Android WebView 可用） */
 .panel::before {
   content: ''; position: absolute; left: 5px; top: 5px; right: 5px; bottom: 5px;

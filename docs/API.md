@@ -40,7 +40,7 @@
 | `silverExp(enemyLv, kind, difficulty, expMul)` | → `{silver, exp}` | 文档公式：敌等级×10×r×难度；r=0.3/2/4 |
 | `regionAt(x, y)` | → Region | 就近区域查询 |
 | `ENEMY_DMG_MULT` | `0.1` | 数值调整：敌人伤害=原来的10%（在 `Player.takeDamage` 入口统一乘算，格挡/闪避在其后结算） |
-| `PLAYER_RANGE_MULT` | `2` | 数值调整：玩家攻击范围×2（在 `Inv.calcStats` 归一化时乘算，近战/远程/魔法统一经 `s.range`） |
+| `PLAYER_RANGE_MULT` | ~~2~~ **已退役（阶段十七）** | 射程改为武器基础值接入：`Config.WEAPONS.range`（弓7.0/弩8.0/杖6.0/近战1.6~2.2）→ 掉落/初始武器 `stats.range` → `calcStats` 直接取主手武器值（品质词条在其上加成、羁绊 `rangeMul` 乘算，空手=1） |
 
 ## 2. LG.U（js/core/utils.js）
 
@@ -65,7 +65,7 @@
 
 | 接口 | 说明 |
 |---|---|
-| `init(canvas)` | 绑定鼠标/触屏/键盘/手柄；左半屏触摸=虚拟摇杆，右半=点击；hover→`state.hover` |
+| `init(canvas)` | 绑定鼠标/触屏/键盘/手柄；左半屏触摸=待定指针（轻点=点击寻路，拖动>8px=虚拟摇杆），右半=点击；hover→`state.hover` |
 | `updateMoveVec()` | 每帧调用，合并 键盘>手柄左摇杆/十字键>虚拟摇杆 → `state.moveVec` |
 | `state` | `{click, hover, moveVec, keys, pressed[], joy, pinch, wheel, padMove, padHit}` |
 | `consumeClick()/consumePinch()/consumeWheel()` | 消费一次性输入（hover 位置直接读 `state.hover`） |
@@ -76,6 +76,12 @@
 | `down(action)` / `keyFor(a)` / `setKey(a,code)` | Q57 按键自定义（存 LS `keymap`，与默认值合并兼容旧存档）；action 含 `menu`（默认 `Escape`）→ `UI.escMenu()` |
 
 手柄标准映射（`PAD`）：左摇杆/十字键移动，A=交互 B=格挡 X=跳跃 Y=药水 LB=切换攻击模式 RT/RB=攻击 Start=背包。
+
+触屏多指语义（2026-10-14 阶段十七，修复"摇杆时点按钮人物卡死"）：`touchstart` 落下第二指时，
+若**摇杆进行中**（`state.joy`）或第二指命中 HUD 按钮（`hitButton`）→ 判定非捏合意图，
+摇杆/待定指针保持不动；仅真双指捏合才启动 `pinchStart` 并挂起 `pending`（`pinchSaved`），
+捏合结束若该指仍按住则恢复 `pending`，继续拖动即可升级摇杆。此前实现见第二指即清空
+`joy+pending` 且本手势内无法重建 → 人物永久卡住。
 
 ## 5. LG.Terrain（js/world/terrain.js）
 
@@ -109,7 +115,8 @@
 ### 7.2 LG.Inv（js/game/inventory.js）
 - `bag`（40格数组） `equip`（weapon+四槽） `silver`
 - `add(item)` → bool；`equipItem(i)` / `unequip(slot)` / `enhance(itemOrId)`（Q35 银币强化，每级+5%，上限10）
-- `sell(i)` → 银币；`activeBonds()` → 去重羁绊（Q29）；`calcStats()` → 综合属性（基础+装备+羁绊归一化）
+- `sell(i)` → 银币；`activeBonds()` → 去重羁绊（Q29）；`calcStats()` → 综合属性（基础+装备+羁绊归一化）；
+  **射程**（阶段十七）= 主手武器 `stats.range`（`Config.WEAPONS` 基础值+品质词条，覆盖空手基础1）× 羁绊 `rangeMul`
 
 ### 7.3 LG.Player（js/game/player.js）
 - 只读属性：`x,y,level,exp,expTo,hp,maxHp,potions,mode,down,facing,jumping,blockUntil,dir`
@@ -187,6 +194,12 @@
   滚轮锚点缩放、双指捏合（锚在两指中点）、`－/＋` 按钮（`#bm-out`/`#bm-in`，缩放标签 `#bm-zoom`，
   步进0.5）、指针捕获拖拽平移 + 触屏单指平移（拖拽/捏合超阈值置 `panned` 抑制点击传送）、
   点击传送按当前视图换算世界坐标、打开时玩家不在可见区自动对焦玩家、画布 `touch-action:none`
+- 传送核心 `tryTeleport(sx,sy)`（画布显示坐标→世界坐标→`Path.nearestWalkable` 吸附，桌面 `onclick`
+  与触屏共用）；**触屏轻点在 `touchend` 判定**（<350ms 且 `!panned`）——`touchstart.preventDefault()`
+  吞掉合成 click，`cv.onclick` 在触屏永不触发（2026-10-14 阶段十七修复"地图无法传送"）
+- 画布尺寸归 CSS（`#bigmap`，`width:min(480px,100%)`）；**短视口**（`@media (max-height:560px)`，
+  横屏手机≈390 高）面板放宽至 96vh、画布按 `calc(96vh-140px)` 收敛——此前 86vh+`overflow:hidden`
+  把地图底部裁掉，裁剪区外触点命中的是底层游戏画布（阶段十七一并修复）
 
 ## 8. 联机模块
 

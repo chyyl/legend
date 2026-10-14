@@ -97,7 +97,10 @@
       const enh = 1 + LG.Config.ENHANCE_PER_LV * (it.lv - 1);
       if (it.slot === 'weapon') {
         s.dmg += it.stats.dmg * enh;
-        s.aspd += it.stats.aspd; s.range += it.stats.range; s.crit += it.stats.crit;
+        s.aspd += it.stats.aspd; s.crit += it.stats.crit;
+        // 射程由主手武器直接决定（覆盖基础1，不做叠加——物品 range 已含武器基础值+品质词条；
+        // 盾/异常的0保留空手基础1）。阶段十七接入，替代旧"固定1格×PLAYER_RANGE_MULT(2)"
+        if (it.stats.range) s.range = it.stats.range;
       } else {
         s.def += (it.stats.def || 0) * enh;
         s.spd += it.stats.spd || 0; s.dmg += it.stats.dmg || 0; s.dodge += it.stats.dodge || 0;
@@ -112,8 +115,8 @@
     s.dmg = Math.round(s.dmg * s.dmgMul);
     s.def = Math.round(s.def * s.defMul);
     s.aspd *= s.aspdMul;
-    // 数值调整：玩家攻击范围扩大1倍（combat 对近战/远程/魔法统一取 s.range，此处一处生效）
-    s.range *= s.rangeMul * (LG.Config.PLAYER_RANGE_MULT || 1);
+    // 射程乘羁绊（主手武器基准已在装备环写入：弓7.0/弩8.0/杖6.0/近战1.6~2.2，空手=1）
+    s.range *= s.rangeMul;
     return s;
   }
 

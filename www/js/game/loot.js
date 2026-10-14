@@ -46,7 +46,9 @@
     const stats = {
       dmg: Math.round(base.base * q.mul * (1 + 0.1 * (regionLv - 1))),
       aspd: q.aspd ? LG.U.range(q.aspd) : 0,
-      range: q.range ? LG.U.range(q.range) : 0,
+      // 阶段十七：武器基础射程接入——基础值随物品入库，走既有 stats.range 管线
+      // （品质词条在其上随机加成；calcStats 汇总后羁绊 rangeMul 乘算）
+      range: base.range + (q.range ? LG.U.range(q.range) : 0),
       crit: q.crit ? LG.U.range(q.crit) : 0,
     };
     const nb = LG.U.randInt(q.bonds[0], q.bonds[1]);

@@ -158,7 +158,7 @@ async (page) => {
   await page.keyboard.press('l');
   await page.waitForTimeout(300);
 
-  // ===== 数值调整：敌人伤害=10% / 玩家攻击范围×2 =====
+  // ===== 数值调整：敌人伤害=10%；阶段十七：武器基础射程接入（铁刃=1.6，旧=固定1×2） =====
   out.balance = await page.evaluate(() => {
     const s = LG.Inv.calcStats();
     const P = LG.Player;
@@ -169,12 +169,17 @@ async (page) => {
     const expect = Math.max(1, Math.round(100 * (LG.Config.ENEMY_DMG_MULT || 0) - (s.def || 0) * 0.1));
     const took = Math.round(full - P.hp);
     P.hp = full;
-    return { mult: LG.Config.ENEMY_DMG_MULT, rangeMult: LG.Config.PLAYER_RANGE_MULT,
-             took, expect, range: +s.range.toFixed(3), dead: P.down };
+    // 掉落武器射程=基础值+品质词条：任意掉落 stats.range 应 ≥其武器表基础
+    const w = LG.Loot.rollWeapon(LG.Config.DIFFICULTY.default, 1);
+    const wdef = LG.Config.WEAPONS.find((x) => x.id === w.weaponId);
+    return { mult: LG.Config.ENEMY_DMG_MULT, legacyRangeMult: LG.Config.PLAYER_RANGE_MULT,
+             took, expect, range: +s.range.toFixed(3), dead: P.down,
+             dropRangeOk: w.stats.range >= wdef.range };
   });
-  out.balancePass = out.balance.mult === 0.1 && out.balance.rangeMult === 2 &&
+  out.balancePass = out.balance.mult === 0.1 && out.balance.legacyRangeMult === undefined &&
     out.balance.took === out.balance.expect && !out.balance.dead &&
-    Math.abs(out.balance.range - 2) < 0.01;
+    out.balance.dropRangeOk === true &&
+    Math.abs(out.balance.range - 1.6) < 0.01; // 铁刃基础射程
 
   // ===== P0：落点菱形（寻路 path 非空 -> render 绘制脉冲金菱形，无 pageerror 即通过） =====
   await page.evaluate(() => LG.Player.moveTo(LG.Player.x + 5, LG.Player.y + 3));

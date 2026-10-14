@@ -214,6 +214,30 @@
 - [ ] 16.6 真机安装验收（本机 SDK 只有 build-tools/platform-tools，无模拟器与系统镜像）：
       安装 → 启动 → 触屏操作 → 存档读写 → 断网可玩 → 局域网联机（走阶段九 9.4 清单）
 
+## 阶段十七：手机实测触屏双 bug + 武器基础射程接入 ★ 2026-10-14 完成
+
+> 用户真机反馈：「使用遥感，点击其他按钮直接人物停止不动，地图无法传送」；另拍板武器基础射程接入 calcStats（"是"）
+
+- [x] 17.1 **摇杆点按钮人物卡死**（`core/input.js`）：`touchstart` 见 `touches===2` 无条件清空
+      `joy+pending` 且本手势内无法重建 → 摇杆进行中或第二指命中 HUD 按钮（`hitButton`）判非捏合、
+      保持不动；真捏合才启动 `pinchStart` 并经 `pinchSaved` 挂起 `pending`，捏合结束若该指仍按住则恢复
+- [x] 17.2 **地图无法传送**（`game/ui.js renderMap`）：地图画布 `touchstart.preventDefault()` 吞掉
+      合成 click → `cv.onclick` 触屏永不触发 → 抽 `tryTeleport(sx,sy)` 共用核心，
+      触屏改在 `touchend` 判单指轻点（<350ms 且 `!panned`）传送；拖拽/捏合/长按不触发
+- [x] 17.3 **横屏矮视口地图被裁**（`css/style.css`，17.2 探针时连带发现）：面板 86vh+`overflow:hidden`
+      在 390 高视口把画布底部裁掉 108px，裁剪区外触点命中底层游戏画布 → `@media (max-height:560px)`
+      面板放宽 96vh、`#bigmap` 按 `calc(96vh-140px)` 收敛（画布尺寸定义归 CSS，ui.js 只管绘制）
+- [x] 17.4 **武器基础射程接入 calcStats**（`core/config.js`/`game/loot.js`/`game/ui.js`/`game/inventory.js`）：
+      掉落与初始武器 `stats.range = Config.WEAPONS.range + 品质词条`（弓7.0/弩8.0/杖6.0/近战1.6~2.2）→
+      `calcStats` 装备环**覆盖式**取主手武器值（空手保留基础1）× 羁绊 `rangeMul`；
+      退役全局 `PLAYER_RANGE_MULT(2)`（旧"固定1格×2"平衡随真实射程退役）
+- [x] 17.5 测试：新增 `t5.js`（6 断言：摇杆点按钮存活/续走、地图轻点传送、拖拽/长按不误传、零报错）
+      + t1~t4 回归全绿（t1 射程断言 2→1.6、增 `dropRangeOk` 掉落射程≥武器基础）
+- [x] 17.6 实现坑复盘：① 二维分支引用循环外 `p` → `ReferenceError`（判定挪到循环外用 `started` 记录落指）；
+      ② CDP `dispatchTouchEvent` 部分抬指语义有歧义 → 多指序列改页面内合成 `TouchEvent`
+      （`changedTouches` 精确可控=真机形状）；③ `calcStats` 基础1与武器值双重计入 → 装备环覆盖式
+- [ ] 17.7 真机回归验收（并入 16.6 清单）：摇杆+点按钮、地图点按传送、横屏地图完整可见、弓/杖射程手感
+
 ## 已修复的关键缺陷（测试记录 2026-10-14 · 阶段十二）
 
 - **关掉设置后卡死**：menu 场景关闭设置/大厅面板后场景停在 menu 但无任何入口 → closePanel 场景感知回弹主菜单

@@ -83,12 +83,15 @@
     /* ===== 触屏 ===== */
     const touches = {};
     let pinchStart = null;
+    let pinchSaved = null; // 捏合挂起的待定指针：捏合结束若该指仍按住则恢复（防摇杆卡死）
     let pending = null; // 左半屏待定指针：拖动>死区升级为摇杆，轻点松手转点击寻路
     canvas.addEventListener('touchstart', (e) => {
       e.preventDefault();
+      let started = null; // 本次落下的手指（二维分支判定用，须在循环外可访问）
       for (const t of e.changedTouches) {
         const p = pos(t);
         touches[t.identifier] = p;
+        started = t;
         // 左半屏（非按钮区）= 摇杆候选：轻点=点击寻路，拖动=摇杆（此前按下即摇杆，
         // 导致"左半侧无法点击移动"）；其余位置 = 点击（交互/移动/按钮）
         if (t.clientX < window.innerWidth / 2 && !hitButton(p)) {
@@ -97,7 +100,17 @@
           state.click = p;
         }
       }
-      if (e.touches.length === 2) { pinchStart = { d: touchDist(e) }; state.joy = null; pending = null; }
+      if (e.touches.length === 2) {
+        // 摇杆进行中，或第二指落在 HUD 按钮上 → 不是捏合意图：保持摇杆/待定不动。
+        //（此前无条件清空 joy+pending 且本手势内无法重建 → "摇杆时点按钮人物卡死"）
+        const sp = started ? pos(started) : null;
+        if (state.joy || (sp && hitButton(sp))) {
+          pinchStart = null;
+        } else {
+          pinchStart = { d: touchDist(e) };
+          pinchSaved = pending; pending = null;
+        }
+      }
     }, { passive: false });
 
     canvas.addEventListener('touchmove', (e) => {
@@ -136,8 +149,13 @@
         }
         if (state.joy && state.joy.id === t.identifier) state.joy = null; // 摇杆手指抬起即停
       }
-      if (e.touches.length < 2) pinchStart = null;
-      if (Object.keys(touches).length === 0) { state.joy = null; pending = null; }
+      if (e.touches.length < 2 && pinchStart) {
+        // 捏合结束：剩余手指若正是被挂起的待定指针 → 恢复，继续拖动即可激活摇杆
+        pinchStart = null;
+        if (pinchSaved && e.touches.length === 1 && pinchSaved.id === e.touches[0].identifier) pending = pinchSaved;
+        pinchSaved = null;
+      }
+      if (Object.keys(touches).length === 0) { state.joy = null; pending = null; pinchSaved = null; }
     }
     canvas.addEventListener('touchend', endTouch, { passive: false });
     canvas.addEventListener('touchcancel', endTouch, { passive: false });

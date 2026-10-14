@@ -258,7 +258,7 @@
   let mapV = { x0: 0, y0: 0, z: 1 };
 
   function renderMap() {
-    const p = panel(T()('map'), `<canvas id="bigmap" width="480" height="480" style="width:100%;max-width:480px;display:block;margin:0 auto;touch-action:none;cursor:grab"></canvas>
+    const p = panel(T()('map'), `<canvas id="bigmap" width="480" height="480" style="display:block;margin:0 auto;touch-action:none;cursor:grab"></canvas>
       <div style="text-align:center;margin-top:6px">
         <button class="btn small" id="bm-out">－</button><span id="bm-zoom" style="margin:0 12px;color:#9a8f70;display:inline-block;min-width:44px">1.0×</span><button class="btn small" id="bm-in">＋</button>
       </div>
@@ -336,12 +336,12 @@
     cv.addEventListener('pointerup', () => { pDrag = null; });
     cv.addEventListener('pointercancel', () => { pDrag = null; });
     /* 触屏：双指捏合缩放（锚在两指中点）+ 单指拖拽平移 */
-    let pinchD = 0, tDrag = null;
+    let pinchD = 0, tDrag = null, tTap = null;
     const tpos = (t) => ({ x: t.clientX, y: t.clientY });
     cv.addEventListener('touchstart', (e) => {
       e.preventDefault(); panned = false;
-      if (e.touches.length === 2) { const a = tpos(e.touches[0]), b = tpos(e.touches[1]); pinchD = Math.hypot(a.x - b.x, a.y - b.y); tDrag = null; }
-      else if (e.touches.length === 1) tDrag = tpos(e.touches[0]);
+      if (e.touches.length === 2) { const a = tpos(e.touches[0]), b = tpos(e.touches[1]); pinchD = Math.hypot(a.x - b.x, a.y - b.y); tDrag = null; tTap = null; }
+      else if (e.touches.length === 1) { tDrag = tpos(e.touches[0]); tTap = { t0: performance.now(), x: e.touches[0].clientX, y: e.touches[0].clientY }; } // 单指轻点候选（记按下点兜底）
     }, { passive: false });
     cv.addEventListener('touchmove', (e) => {
       e.preventDefault();
@@ -360,17 +360,33 @@
     }, { passive: false });
     cv.addEventListener('touchend', (e) => {
       if (e.touches.length < 2) pinchD = 0;
-      if (e.touches.length === 0) tDrag = null;
+      if (e.touches.length === 0) {
+        // 单指轻点传送：touchstart 的 preventDefault 吞掉了合成 click，触屏传送只能在
+        // touchend 判定（此前仅靠 cv.onclick → 手机上永不触发，即"地图无法传送"）；
+        // 拖拽/捏合（panned=true）或超时长按不触发
+        if (tTap && !panned && performance.now() - tTap.t0 < 350) {
+          const t = e.changedTouches && e.changedTouches[0];
+          const pt = t ? { x: t.clientX, y: t.clientY } : tTap; // 兜底用按下点（真机 changedTouches 必有）
+          const r = cv.getBoundingClientRect();
+          tryTeleport((pt.x - r.left) / r.width * 480, (pt.y - r.top) / r.height * 480);
+        }
+        tDrag = null; tTap = null;
+      }
     });
-    // 点击传送（Q13）：按当前视图换算世界坐标；拖拽/捏合后本次不触发
-    cv.onclick = (e) => {
-      if (panned) { panned = false; return; }
-      const r = cv.getBoundingClientRect();
-      const wx = (mapV.x0 + ((e.clientX - r.left) / r.width * 480) / mapV.z) / S;
-      const wy = (mapV.y0 + ((e.clientY - r.top) / r.height * 480) / mapV.z) / S;
+    // 传送核心（Q13）：画布显示坐标(0..480)→世界坐标，吸附最近可走格；
+    // 桌面 onclick 与触屏 touchend 轻点共用
+    function tryTeleport(sx, sy) {
+      const wx = (mapV.x0 + sx / mapV.z) / S;
+      const wy = (mapV.y0 + sy / mapV.z) / S;
       const near = LG.Path.nearestWalkable(wx | 0, wy | 0, 12);
       if (near) { LG.Player.x = near.x; LG.Player.y = near.y; toast('已传送'); closePanel(); }
       else toast('该处无法到达');
+    }
+    // 点击传送：拖拽/捏合后本次不触发（触屏路径见上方 touchend 轻点判定）
+    cv.onclick = (e) => {
+      if (panned) { panned = false; return; }
+      const r = cv.getBoundingClientRect();
+      tryTeleport((e.clientX - r.left) / r.width * 480, (e.clientY - r.top) / r.height * 480);
     };
     return p;
   }
@@ -557,10 +573,11 @@
     p.querySelector('#cc-ok').onclick = () => {
       const name = p.querySelector('#cc-name').value || '冒险者';
       const wpnId = p.querySelector('#cc-wpn').value;
-      // 发放初始武器
+      // 发放初始武器（阶段十七：基础射程随武器入库，calcStats 据此得出弓7.0/杖6.0/近战1.6…）
       const it = LG.Loot.rollWeapon(LG.Config.DIFFICULTY.default, 1);
-      it.weaponId = wpnId; it.kind = LG.Config.WEAPONS.find(w => w.id === wpnId).kind;
-      it.quality = 'N'; it.stats = { dmg: LG.Config.WEAPONS.find(w => w.id === wpnId).base, aspd: 0, range: 0, crit: 0 };
+      const wdef = LG.Config.WEAPONS.find(w => w.id === wpnId);
+      it.weaponId = wpnId; it.kind = wdef.kind;
+      it.quality = 'N'; it.stats = { dmg: wdef.base, aspd: 0, range: wdef.range, crit: 0 };
       LG.Inv.add(it); LG.Inv.equipItem(LG.Inv.bag.indexOf(it));
       LG.Player._raw.name = name; LG.Player._raw.gender = look.gender; LG.Player._raw.look = look;
       closePanel();
