@@ -151,6 +151,68 @@ async (page) => {
   await page.keyboard.press('l');
   await page.waitForTimeout(300);
 
+  // ===== 数值调整：敌人伤害=10% / 玩家攻击范围×2 =====
+  out.balance = await page.evaluate(() => {
+    const s = LG.Inv.calcStats();
+    const P = LG.Player;
+    const full = s.maxHp;
+    P.hp = full; P.down = false; P.blockUntil = 0;
+    if (P.stats) P.stats.dodge = 0;
+    P.takeDamage(100); // 100×0.1=10，再扣 def×0.1（下限1点磨血）
+    const expect = Math.max(1, Math.round(100 * (LG.Config.ENEMY_DMG_MULT || 0) - (s.def || 0) * 0.1));
+    const took = Math.round(full - P.hp);
+    P.hp = full;
+    return { mult: LG.Config.ENEMY_DMG_MULT, rangeMult: LG.Config.PLAYER_RANGE_MULT,
+             took, expect, range: +s.range.toFixed(3), dead: P.down };
+  });
+  out.balancePass = out.balance.mult === 0.1 && out.balance.rangeMult === 2 &&
+    out.balance.took === out.balance.expect && !out.balance.dead &&
+    Math.abs(out.balance.range - 2) < 0.01;
+
+  // ===== P0：落点菱形（寻路 path 非空 -> render 绘制脉冲金菱形，无 pageerror 即通过） =====
+  await page.evaluate(() => LG.Player.moveTo(LG.Player.x + 5, LG.Player.y + 3));
+  await page.waitForTimeout(300);
+  out.pathLen = await page.evaluate(() => LG.Player.path.length);
+  out.pathPass = out.pathLen > 0;
+
+  // ===== P0：右上小地图（热区扫描 + 点击转大地图） =====
+  out.minimap = await page.evaluate(() => {
+    const W = window.innerWidth;
+    for (let y = 10; y < 280; y += 4)
+      for (let x = W - 6; x > W - 320; x -= 4)
+        if (LG.UI.hudHit({ x, y }) === 'minimap') return { x, y };
+    return null;
+  });
+  out.minimapHit = !!out.minimap;
+  if (out.minimap) {
+    await page.mouse.click(out.minimap.x, out.minimap.y);
+    out.minimapClick = await page.waitForSelector('.panel[data-page="map"]', { timeout: 3000 })
+      .then(() => true).catch(() => false);
+    if (out.minimapClick) {
+      await page.keyboard.press('m');
+      await page.waitForFunction(() => !document.querySelector('.panel'), null, { timeout: 3000 });
+    }
+  }
+
+  // ===== P0：飘字分级（enemy_hit flags -> size/color；普通14 暴击18 三倍24） =====
+  out.grade = await page.evaluate(() => {
+    const E = LG.Combat.effects;
+    const mk = () => ({ x: LG.Player.x, y: LG.Player.y - 3, hp: 999, maxHp: 999, kind: 'normal',
+                        type: { id: 'probe', color: '#888' } });
+    const one = (flags) => {
+      E.length = 0;
+      LG.U.bus.emit('enemy_hit', flags ? { e: mk(), n: 17, flags } : { e: mk(), n: 17 });
+      const t = E.find((f) => f.type === 'text');
+      const r = t ? { size: t.size, color: t.color } : null;
+      E.length = 0;
+      return r;
+    };
+    return { normal: one(), crit: one({ crit: true }), tri: one({ tri: true }) };
+  });
+  out.gradePass = !!out.grade.normal && out.grade.normal.size === 14 &&
+    !!out.grade.crit && out.grade.crit.size === 18 && out.grade.crit.color === '#ffd777' &&
+    !!out.grade.tri && out.grade.tri.size === 24 && out.grade.tri.color === '#ff7a3c';
+
   await page.screenshot({ path: SHOT + 'a3-game.png' });
   out.errors = out.errors.slice(0, 12);
   return out;

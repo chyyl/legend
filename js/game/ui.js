@@ -489,7 +489,7 @@
   }
 
   /* ---------- HUD 热区（物理 CSS 像素；drawHUD 每帧缓存，engine 点击命中经 hudHit） ---------- */
-  const hudRects = { mode: null, settings: null, tracker: null };
+  const hudRects = { mode: null, settings: null, tracker: null, minimap: null };
   function hudHit(c) {
     for (const k in hudRects) {
       const r = hudRects[k];
@@ -533,20 +533,25 @@
      行2 = 可提交提示 / 到目标点的方向三角+距离。
      空间引导：目标在屏内 -> 金菱形脉冲标记；在屏外 -> 视口边缘指向箭头。
      点击追踪条打开任务面板（engine 经 hudHit('tracker') 转发）。 */
-  function drawQuestTracker(g, x, y, w, fs, U, vw, vh) {
-    const zh = LG.I18n.lang === 'zh';
-    const P = LG.Player;
+  /* 当前追踪目标解析（P0：追踪条与右上小地图共用一份逻辑）。
+     返回 { q, ready, tgt }：可提交任务优先 → 第一个任务；
+     无任务时 tgt=最近任务 NPC（引导去找营地首领接取）。 */
+  function hudObjective() {
     const act = LG.Quest.active;
     const q = act.find((a) => a.got >= a.need) || act[0] || null;
     const ready = !!(q && q.got >= q.need);
-    let line1, tgt = null;
-    if (q) {
-      line1 = (zh ? q.zh : q.en) + '  ' + q.got + '/' + q.need;
-      if (!ready) tgt = q.target || regionXY(q.region);
-    } else {
-      line1 = T()('guide_none');
-      tgt = nearestQuestNpc();
-    }
+    let tgt = null;
+    if (q) { if (!ready) tgt = q.target || regionXY(q.region); }
+    else tgt = nearestQuestNpc();
+    return { q, ready, tgt };
+  }
+
+  function drawQuestTracker(g, x, y, w, fs, U, vw, vh) {
+    const zh = LG.I18n.lang === 'zh';
+    const P = LG.Player;
+    const obj = hudObjective();
+    const q = obj.q, ready = obj.ready, tgt = obj.tgt;
+    const line1 = q ? (zh ? q.zh : q.en) + '  ' + q.got + '/' + q.need : T()('guide_none');
     const th = 48;
     g.fillStyle = 'rgba(6,7,11,0.78)'; g.fillRect(x, y, w, th);
     g.lineWidth = 1; g.strokeStyle = 'rgba(216,180,90,0.9)'; g.strokeRect(x + 1, y + 1, w - 2, th - 2);
@@ -597,6 +602,39 @@
       g.globalAlpha = 1;
     }
     hudRects.tracker = { x: x * U, y: y * U, w: w * U, h: th * U };
+  }
+
+  /* ---------- 右上小地图（P0）：真实地形缩略（复用 bakeTerrainMap）+ 玩家白点 + 目标金菱形 ----------
+     底图烘焙较贵（2000²→128² 采样），故每 1.2s 重烘焙一次（迷雾探索后会刷新）；
+     每帧只做 drawImage + 两个标记，开销可忽略。点击小地图 -> 打开大地图（hudHit 转发）。 */
+  const miniState = { cv: null, g: null, last: -1e9, S: 128 };
+  function drawMinimap(g, x, y, size) {
+    const m = miniState;
+    if (!m.cv) {
+      m.cv = document.createElement('canvas'); m.cv.width = m.S; m.cv.height = m.S;
+      m.g = m.cv.getContext('2d');
+    }
+    const now = performance.now();
+    if (now - m.last > 1200) { bakeTerrainMap(m.g, m.S); m.last = now; }
+    g.fillStyle = '#06070b'; g.fillRect(x - 3, y - 3, size + 6, size + 6);
+    g.drawImage(m.cv, x, y, size, size);
+    const k = size / LG.Config.SIZE; // 世界坐标 -> 小地图
+    // 玩家白点
+    g.fillStyle = '#fff';
+    g.fillRect(x + LG.Player.x * k - 2, y + LG.Player.y * k - 2, 4, 4);
+    // 当前任务目标金菱形（与追踪条同源 hudObjective；可提交/无坐标时不画）
+    const obj = hudObjective();
+    if (obj.tgt) {
+      g.save();
+      g.translate(x + obj.tgt.x * k, y + obj.tgt.y * k);
+      g.rotate(Math.PI / 4);
+      g.strokeStyle = '#ffd777'; g.lineWidth = 1.5;
+      g.strokeRect(-4, -4, 8, 8);
+      g.restore();
+    }
+    // 金框
+    g.lineWidth = 1; g.strokeStyle = 'rgba(216,180,90,0.9)';
+    g.strokeRect(x + 0.5, y + 0.5, size - 1, size - 1);
   }
 
   function drawHUD() {
@@ -708,12 +746,18 @@
     g.fillStyle = '#e8d9a8'; g.textAlign = 'center';
     g.fillText(sbTxt, sbx + sbw / 2, sby + sbh / 2 + fsSet * 0.36); // 视觉居中（CJK 基线）
 
+    /* ===== 徽章/设置按钮下方：右上小地图（P0：真实地形缩略 + 玩家点 + 目标菱形） ===== */
+    const mms = (W < 760 ? 96 : 128) / U; // 物理 96px(手机)/128px(桌面)，/U 换回虚拟坐标
+    const mmx = vw - 14 - mms, mmy = sby + sbh + 6;
+    drawMinimap(g, mmx, mmy, mms);
+
     /* ===== 左上铭牌下方：任务追踪条（目标引导，反馈"不知道干什么"） ===== */
     drawQuestTracker(g, mx, my + mh + 6, mw, fs, U, vw, vh);
 
     // 热区缓存（物理 CSS 像素；engine.handleHotkeys 经 LG.UI.hudHit 命中）
     hudRects.mode = { x: bx * U, y: by * U, w: bw * U, h: bh * U };
     hudRects.settings = { x: sbx * U, y: sby * U, w: sbw * U, h: sbh * U };
+    hudRects.minimap = { x: mmx * U, y: mmy * U, w: mms * U, h: mms * U };
 
     /* ===== 底部居中：BOSS 血条（黑台 + 暗红渐变 + 金框 + 两端菱形铆） ===== */
     const boss = LG.Enemy.list.find((e) => e.isBoss && e.hp > 0);

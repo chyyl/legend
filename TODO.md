@@ -102,6 +102,41 @@
 - [x] 12.6 验证：菜单/设置/大厅/创建/HUD/背包/任务 7 屏截图 + 中英切换 + B/L 开关 + 返回/✕ 回弹 + 移动端 390×844
       布局 + FPS 48-61 + 0 console 错误（截图 u7~u18、m1/m2）
 
+## 阶段十三：手机反馈修复 + P0 打磨 + 数值调整（P0）★ 2026-10-14 完成
+> 两批共 7 条真机反馈全部修复；P0 打磨 5 项落地；自动化验收（桌面 t1 + iPhone12 t2）全绿、0 console 错误
+
+### 手机反馈（7 条全修复）
+- [x] 13.1 ①「UI太大建议缩小50%」→ drawHUD 虚拟坐标 `U=W<760?0.5:(W<1100?0.75:1)` + `fs()` 字号保底10物理像素；
+      CSS @media(max-width:720px) 压缩排版（触控热区保持≥44px）；BOSS 条粗指针设备上移避开触屏按钮
+- [x] 13.2 ②「左半屏无法点击移动」→ touchstart 左半屏记 pending（不建摇杆），touchmove 位移>8px 才激活摇杆，
+      touchend <350ms 未拖动=点击寻路；按 id 归属清理、双指 pinch 清 pending
+- [x] 13.3 ③「不知道干什么」→ HUD 任务追踪条（可提交优先→active[0]→引导找营地首领）+ 屏内金菱形/屏外边缘箭头+距离；
+      **根因：`Quest.accept` 无任何调用方** → `renderQuests` 新增「可接任务」区（按 NPC 区域过滤）
+- [x] 13.4 ④「可穿墙与海一部分」→ terrain 新增零分配 `freeTile/boxPenalty/passableBox`（脚印四角内缩0.02）；
+      player 轴分离+非法位形脱困；enemy `stepTo` 同规则（追击+回家均修）；jumpable(h1)⊂walkable（死分支移除）
+- [x] 13.5 ⑤「地图与真实地形不一样」→ `bakeTerrainMap` 按 `Terrain.raw()` 逐像素烘焙（类型色+高差明暗+迷宫未探索压黑），大地图/小地图共用
+- [x] 13.6 ⑥「没有设置」→ keymap.menu=Escape + `UI.escMenu`（只接管无面板/`dataset.page` 页面面板）+ HUD 设置按钮 + 大厅设置按钮
+- [x] 13.7 ⑦「开始游戏与联机大厅在一起」→ 主菜单拆分：开始游戏(primary)→`Lobby.startSolo()` 直开；联机大厅独立入口
+
+### P0 打磨（5 项）
+- [x] 13.8 落点菱形：地形循环后画 `Player.path` 末项脉冲金菱形
+- [x] 13.9 伪光照：`drawLighting()` 特效层后径向暗角（maze 0.60 / void 0.66 / castle 0.50 / 其它 0.34）
+- [x] 13.10 主题粒子：42 粒屏幕空间池按 `region.biome` 换主题（plain/farm/coast/maze/rock/snow/castle/void/default）
+- [x] 13.11 飘字分级：`Enemy.damage(e,n,flags)` 透传 crit/tri → 普通14白 / 暴击18金 / 三倍24橙红（engine 文字渲染支持 `f.size`）
+- [x] 13.12 小地图：右上 96(手机)/128(桌面) 物理像素、`bakeTerrainMap` 1.2s 重烘焙、玩家白点+`hudObjective()` 目标金菱形+金框、
+      `hudHit('minimap')` 点击开大地图
+
+### 数值调整（玩家要求）
+- [x] 13.13 敌人伤害=10%：`Config.ENEMY_DMG_MULT=0.1`，`Player.takeDamage` 入口统一乘算（近战/弹道/范围技唯一入口；
+      格挡/闪避在其后，仍保底1点磨血）
+- [x] 13.14 玩家攻击范围×2：`Config.PLAYER_RANGE_MULT=2`，`Inv.calcStats` 归一化乘算（近战/远程/魔法统一经 `s.range`）
+
+### 验收
+- [x] 13.15 桌面 t1（1280×800）+ 手机 t2（iPhone12 390×844 hasTouch/isMobile）全绿、0 console 错误：
+      balancePass（100→实扣10、range=2）、pathPass、minimapHit/Click、gradePass（14/18/24）、
+      前 7 反馈断言全部保持（墙1502.019/水1502.007/敌人拦停/hud四热区/ESC/任务接取/map18/trackerClick）
+      脚本留存 `.playwright-mcp/t1.js`、`t2.js`（用途见同目录 README）
+
 ## 已修复的关键缺陷（测试记录 2026-10-14 · 阶段十二）
 - **关掉设置后卡死**：menu 场景关闭设置/大厅面板后场景停在 menu 但无任何入口 → closePanel 场景感知回弹主菜单
 - **背包网格塌成 1 列**：40 格竖排 86vh 长条 → grid auto-fill 在 shrink-to-fit 面板按 max-content 只算 1 列 → .panel-bag 显式宽度

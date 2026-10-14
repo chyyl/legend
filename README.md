@@ -52,14 +52,35 @@ python -m http.server 8080      # 终端2：静态服务
 ## 📦 打包发布
 
 ### Android APK（离线+联机全功能）
+
+项目已内置 `capacitor.config.json`（appId `com.legend.game`、`webDir:"."`、`minSdkVersion 21`、`releaseType: "APK"`），
+**无需 `npx cap init`**——网页文件原样打进 APK，断网可玩，同一局域网内多台设备照常联机。
+
 ```bash
+# 1) 初始化 Node 依赖（仅首次）
 npm init -y
 npm i @capacitor/core @capacitor/cli @capacitor/android
+
+# 2) 挂载 Android 工程（仅首次，生成 android/ 目录）
 npx cap add android
+
+# 3) 每次改动网页资源后，同步进 android/app/src/main/assets/public（仅复制，不改源码）
 npx cap sync android
-npx cap open android        # Android Studio → Build APK
-# 兼容 Android 5（minSdkVersion 21 已在 capacitor.config.json 配置）
+
+# 4) 打开 Android Studio 出包
+npx cap open android
+#    Build → Generate Signed Bundle / APK → APK → 新建/选择签名密钥 → Release
+#    产物：android/app/build/outputs/apk/release/app-release.apk
+
+# 命令行直出 Release 包（签名已配好时）
+cd android && ./gradlew assembleRelease
+# 安装到已连接设备
+adb install -r android/app/build/outputs/apk/release/app-release.apk
 ```
+
+- **兼容 Android 5**：minSdkVersion 21 已在 `capacitor.config.json` 写死，勿改回 Capacitor 新版默认值
+- 每次 `npx cap sync` 后重新构建即可看到网页改动；`npx cap open android` 前无需删 `android/`
+- 真机验收清单见 `TODO.md` 阶段九 9.4（需本机 Android Studio）
 
 ### iOS（iPhone 12）
 ```bash

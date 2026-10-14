@@ -51,6 +51,8 @@
 
   function takeDamage(n) {
     if (P.down) return;
+    // 数值调整：敌人伤害统一降为10%（敌人近战/弹道/范围技均经此唯一入口；最低仍保留1点磨血）
+    n *= LG.Config.ENEMY_DMG_MULT;
     const now = performance.now() / 1000;
     if (now < P.blockUntil) n *= (1 - LG.Config.BLOCK_REDUCE); // 格挡减伤50%
     // 闪避判定

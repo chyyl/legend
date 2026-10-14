@@ -111,7 +111,9 @@
     // 归一化
     s.dmg = Math.round(s.dmg * s.dmgMul);
     s.def = Math.round(s.def * s.defMul);
-    s.aspd *= s.aspdMul; s.range *= s.rangeMul;
+    s.aspd *= s.aspdMul;
+    // 数值调整：玩家攻击范围扩大1倍（combat 对近战/远程/魔法统一取 s.range，此处一处生效）
+    s.range *= s.rangeMul * (LG.Config.PLAYER_RANGE_MULT || 1);
     return s;
   }
 

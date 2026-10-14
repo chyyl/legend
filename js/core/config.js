@@ -139,6 +139,8 @@
     POTION_MAX: 3,          // Q62：限量药水3瓶，精英补充
     POTION_HEAL: 0.35,      // 药水回复35%生命
     BLOCK_REDUCE: 0.5, BLOCK_SEC: 2, BLOCK_CD: 3, // Q23：格挡减伤50%/持续2s/冷却3s
+    ENEMY_DMG_MULT: 0.1,   // 数值调整：敌人伤害为原来的10%（近战/弹道/范围技统一入口 takeDamage 应用；格挡/闪避在其之后结算）
+    PLAYER_RANGE_MULT: 2,  // 数值调整：玩家攻击范围扩大1倍（calcStats 归一化时乘算，近战/远程/魔法一致生效）
     BAG_SIZE: 40,           // Q56：40格背包，无负重
     ENHANCE_PER_LV: 0.05,   // Q35：银币强化每级+5%基础
     AGGRO_RANGE: 5,         // Q74：缓慢型警戒5格

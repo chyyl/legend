@@ -43,9 +43,13 @@
           if (d < 2.2) LG.Player.takeDamage(e.dmg * 1.5); // 圈内受伤
         } });
     });
-    // 敌人受击
-    LG.U.bus.on('enemy_hit', ({ e, n }) => {
-      effects.push({ x: e.x, y: e.y - 1, t: 0, life: 0.6, type: 'text', text: '-' + Math.round(n), color: '#fff' });
+    // 敌人受击（P0 飘字分级：普通白字 14 / 暴击金字 18 / 三倍暴击橙红大字 24）
+    LG.U.bus.on('enemy_hit', ({ e, n, flags }) => {
+      const grade = flags && flags.tri ? { color: '#ff7a3c', size: 24, life: 0.95 }
+        : flags && flags.crit ? { color: '#ffd777', size: 18, life: 0.75 }
+        : { color: '#fff', size: 14, life: 0.6 };
+      effects.push({ x: e.x, y: e.y - 1, t: 0, life: grade.life, type: 'text',
+        text: '-' + Math.round(n), color: grade.color, size: grade.size });
       LG.Sound.play('hit');
       // 吸血羁绊（Q：攻击回血5%）
       const s = LG.Inv.calcStats();
@@ -141,7 +145,7 @@
         if (d > range) return;
         const ea = Math.atan2(e.y - P.y, e.x - P.x);
         let da = Math.abs(((ea - ang + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
-        if (da <= half) LG.Enemy.damage(e, dmg);
+        if (da <= half) LG.Enemy.damage(e, dmg, { crit, tri }); // flags 透传供飘字分级
       });
       effects.push({ x: P.x, y: P.y, t: 0, life: 0.15, type: 'slash', ang, r: range });
     } else if (kind === 'ranged') {
@@ -154,7 +158,7 @@
       // 法杖 AOE（Q22）
       const aoe = s.range * 0.3;
       LG.Enemy.list.forEach((e) => {
-        if (LG.U.dist(target.x, target.y, e.x, e.y) <= aoe) LG.Enemy.damage(e, dmg);
+        if (LG.U.dist(target.x, target.y, e.x, e.y) <= aoe) LG.Enemy.damage(e, dmg, { crit, tri });
       });
       effects.push({ x: target.x, y: target.y, t: 0, life: 0.3, type: 'aoe', r: aoe });
     }
@@ -170,7 +174,8 @@
       let hit = false;
       if (p.from === 'player') {
         for (const e of LG.Enemy.list) {
-          if (e.hp > 0 && LG.U.dist(p.x, p.y, e.x, e.y) < 0.6) { LG.Enemy.damage(e, p.dmg); hit = true; break; }
+          // 弹道命中：整颗 p 透传（含创建时记录的 crit/tri）供飘字分级
+          if (e.hp > 0 && LG.U.dist(p.x, p.y, e.x, e.y) < 0.6) { LG.Enemy.damage(e, p.dmg, p); hit = true; break; }
         }
       } else {
         if (LG.U.dist(p.x, p.y, LG.Player.x, LG.Player.y) < 0.6) { LG.Player.takeDamage(p.dmg); hit = true; }

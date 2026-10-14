@@ -100,6 +100,77 @@
     }
   }
 
+  /* ================= P0：游戏内主题氛围粒子 + 伪光照 =================
+     屏幕空间粒子池（42 粒，零分配复用）：loop 每帧调 updateParticles(dt)，
+     render 世界层画完后依次 drawLighting()（径向暗角）+ drawParticles()。
+     换区域即换主题（biome → PARTICLE_THEME）：草原飞絮/农场谷壳/海岸盐雾/
+     迷宫磷光/岩岭尘灰/雪原飘雪/城堡火星/虚空幽光/其它金色萤光。 */
+  const P_N = 42;
+  const PRTC = { ps: [], th: null };
+  const PARTICLE_THEME = {
+    plain:   { c: '167,209,112', vx: -16, vy: 22,  a: 0.45, sz: 2.2 }, // 草原：草籽斜落
+    farm:    { c: '214,196,120', vx: -10, vy: 28,  a: 0.50, sz: 2.4 }, // 农场：谷壳飘落
+    coast:   { c: '175,225,255', vx: 14,  vy: -6,  a: 0.50, sz: 2.0 }, // 海岸：盐雾光点上浮
+    maze:    { c: '110,240,200', vx: -5,  vy: -12, a: 0.55, sz: 2.0 }, // 迷宫：幽绿磷光
+    rock:    { c: '195,175,155', vx: -8,  vy: 30,  a: 0.35, sz: 2.0 }, // 兵工厂/骷髅岛：尘灰
+    snow:    { c: '235,245,255', vx: -20, vy: 36,  a: 0.65, sz: 2.4 }, // 雪原：飘雪
+    castle:  { c: '255,170,90',  vx: -6,  vy: -16, a: 0.50, sz: 2.2 }, // 城堡：火星上浮
+    void:    { c: '175,145,255', vx: -6,  vy: -14, a: 0.55, sz: 2.2 }, // 终末之战：虚空幽光
+    default: { c: '230,196,120', vx: -6,  vy: -10, a: 0.40, sz: 1.8 }, // 其它：金色萤光
+  };
+
+  function updateParticles(dt) {
+    if (Engine.scene !== 'game') return;
+    const W = window.innerWidth, H = window.innerHeight;
+    const rg = LG.Terrain.regionOf(LG.Player.x, LG.Player.y);
+    const th = PARTICLE_THEME[(rg && rg.biome)] || PARTICLE_THEME.default;
+    if (PRTC.th !== th) { PRTC.th = th; PRTC.ps.length = 0; } // 换区域重铺粒子（取新主题的速度/颜色）
+    const ps = PRTC.ps;
+    while (ps.length < P_N) ps.push({
+      x: Math.random() * W, y: Math.random() * H,
+      ph: Math.random() * 6.28, k: 0.7 + Math.random() * 0.6,
+    });
+    for (let i = 0; i < ps.length; i++) {
+      const p = ps[i];
+      p.ph += dt * 2;
+      p.x += (th.vx + Math.sin(p.ph) * 9) * dt; // 横向基础风速 + 正弦摆动
+      p.y += th.vy * dt;
+      if (p.x < -8) p.x = W + 8; else if (p.x > W + 8) p.x = -8;
+      if (p.y < -8) p.y = H + 8; else if (p.y > H + 8) p.y = -8;
+    }
+  }
+
+  function drawParticles() {
+    const th = PRTC.th;
+    if (!th) return;
+    for (let i = 0; i < PRTC.ps.length; i++) {
+      const p = PRTC.ps[i];
+      const a = th.a * (0.45 + 0.55 * (0.5 + 0.5 * Math.sin(p.ph))); // 呼吸透明度
+      g.fillStyle = 'rgba(' + th.c + ',' + a.toFixed(3) + ')';
+      const s = th.sz * p.k;
+      g.fillRect(p.x, p.y, s, s);
+    }
+  }
+
+  /* P0 伪光照：以玩家为中心铺径向暗角（世界层之上、HUD 之下）。
+     洞穴/虚空/城堡生物群落更暗更深，平原保持轻微暗角提升氛围与可读性。 */
+  function drawLighting() {
+    const W = window.innerWidth, H = window.innerHeight;
+    const rg = LG.Terrain.regionOf(LG.Player.x, LG.Player.y);
+    const biome = (rg && rg.biome) || '';
+    const dark = biome === 'void' ? 0.66 : biome === 'maze' ? 0.60
+      : biome === 'castle' ? 0.50 : 0.34;
+    const draw = LG.Config.TILE * LG.Camera.zoomVal;
+    const ps = LG.Camera.worldToScreen(LG.Player.x, LG.Player.y);
+    const cx = ps.x + draw / 2, cy = ps.y + draw / 2;
+    const rad = Math.max(W, H) * (biome === 'maze' ? 0.45 : 0.58);
+    const gd = g.createRadialGradient(cx, cy, rad * 0.30, cx, cy, rad);
+    gd.addColorStop(0, 'rgba(4,6,12,0)');
+    gd.addColorStop(1, 'rgba(4,6,12,' + dark + ')');
+    g.fillStyle = gd;
+    g.fillRect(0, 0, W, H);
+  }
+
   /* ================= 开局（由 lobby 'start_game' 触发） ================= */
   function beginGame() {
     LG.UI.closePanel();
@@ -206,6 +277,7 @@
     // 探索任务判定
     LG.Quest.checkExplore(px, py);
 
+    updateParticles(dt); // 主题氛围粒子（P0）：按当前区域生态更新（落叶/飘雪/火星/幽光…）
     render();
     LG.UI.drawHUD();
     sendSnapshot();
@@ -253,6 +325,7 @@
     if (hud === 'mode') { toggleMode(); return; }
     if (hud === 'settings') { LG.UI.togglePage('settings', LG.UI.renderSettings); return; }
     if (hud === 'tracker') { LG.UI.togglePage('quest', lgQuestPanel); return; }
+    if (hud === 'minimap') { LG.UI.togglePage('map', LG.UI.renderMap); return; } // 小地图 -> 大地图（P0）
     const w = LG.Camera.screenToWorld(c.x, c.y);
     // 3) NPC：点中则范围内直接交互，否则寻路过去自动交互（修复“点击NPC没反应”）
     const npc = LG.NPC.nearby(w.x, w.y);
@@ -400,6 +473,23 @@
       }
     }
 
+    // 点击寻路落点菱形（P0）：脉冲金框标示"正要走到哪"（path 消费制，末项=剩余终点）
+    if (LG.Player.path && LG.Player.path.length) {
+      const nd = LG.Player.path[LG.Player.path.length - 1];
+      const nds = LG.Camera.worldToScreen(nd.x, nd.y);
+      g.save();
+      g.translate(nds.x + draw / 2, nds.y + draw / 2);
+      g.rotate(Math.PI / 4);
+      g.globalAlpha = 0.45 + 0.45 * Math.sin(performance.now() / 180);
+      const q = draw * 0.26;
+      g.strokeStyle = '#ffd777'; g.lineWidth = 2;
+      g.strokeRect(-q, -q, q * 2, q * 2);
+      g.fillStyle = 'rgba(255,215,119,0.2)';
+      g.fillRect(-q, -q, q * 2, q * 2);
+      g.restore();
+      g.globalAlpha = 1;
+    }
+
     // 宝箱（悬停金环提示可开启）
     Engine._chests.forEach((ch) => {
       if (ch.opened) return;
@@ -497,7 +587,8 @@
       const k = f.t / f.life;
       if (f.type === 'text') {
         g.globalAlpha = 1 - k; g.fillStyle = f.color;
-        g.font = 'bold ' + Math.max(12, 14 * zoom) + 'px "LegendKai", sans-serif'; g.textAlign = 'center';
+        // P0 飘字分级：字号随 flags 变化（普通14/暴击18/三倍24），随镜头缩放
+        g.font = 'bold ' + Math.max(12, (f.size || 14) * zoom) + 'px "LegendKai", sans-serif'; g.textAlign = 'center';
         g.fillText(f.text, s.x + draw / 2, s.y - k * 24);
         g.globalAlpha = 1;
       } else if (f.type === 'slash') {
@@ -511,6 +602,10 @@
         g.beginPath(); g.arc(s.x + draw / 2, s.y + draw / 2, f.r * Tsz * zoom, 0, Math.PI * 2); g.fill();
       }
     });
+
+    // P0：伪光照（玩家中心径向暗角，maze/void/castle 加深）→ 主题粒子（屏幕空间，最上层）
+    drawLighting();
+    drawParticles();
 
     // 倒地救援提示（Q26）
     if (LG.Player.down) {

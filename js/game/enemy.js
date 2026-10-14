@@ -151,9 +151,10 @@
     }
   }
 
-  function damage(e, n) {
+  /* 对敌人造成伤害；flags={crit,tri} 透传给 enemy_hit，供 P0 飘字分级（字号/颜色） */
+  function damage(e, n, flags) {
     e.hp -= n;
-    LG.U.bus.emit('enemy_hit', { e, n });
+    LG.U.bus.emit('enemy_hit', { e, n, flags });
     if (e.hp <= 0) LG.U.bus.emit('enemy_dead', e);
   }
 

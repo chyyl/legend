@@ -14,6 +14,7 @@
 | 时间 | 所有 `dt` 单位秒；`performance.now()/1000` 为全局时钟 |
 | 品质色 | N/D灰 R/C蓝 SR/B紫 SSR/A橙 S/SS红（CSS 类 `.q-<品质>`） |
 | 事件总线 | `LG.U.bus.on(evt, fn)` / `.emit(evt, data)`，见 §9 事件表 |
+| 文案 | 全部经 `LG.I18n.get(key)` / `T()('key')`，新增键必须同时登记 `js/data/i18n.js`（zh/en）；近期新增：`start_game quest_available quest_none guide_none guide_ready guide_dist` |
 
 加载顺序（index.html 中固定）：
 `i18n → config → utils → assets → input → audio → terrain → pathfinding → camera → loot → inventory → player → enemy → combat → quest → npc → save → ui → net → lobby → engine → main`
@@ -38,6 +39,8 @@
 | `enemyStat(type, difficulty, regionLv)` | → `{hp,dmg,speed,...}` | Q75 难度不改移速 |
 | `silverExp(enemyLv, kind, difficulty, expMul)` | → `{silver, exp}` | 文档公式：敌等级×10×r×难度；r=0.3/2/4 |
 | `regionAt(x, y)` | → Region | 就近区域查询 |
+| `ENEMY_DMG_MULT` | `0.1` | 数值调整：敌人伤害=原来的10%（在 `Player.takeDamage` 入口统一乘算，格挡/闪避在其后结算） |
+| `PLAYER_RANGE_MULT` | `2` | 数值调整：玩家攻击范围×2（在 `Inv.calcStats` 归一化时乘算，近战/远程/魔法统一经 `s.range`） |
 
 ## 2. LG.U（js/core/utils.js）
 
@@ -70,7 +73,7 @@
 | `padAction(action)` | 手柄按键边沿触发：`interact/block/jump/potion/mode/attack/bag/map` |
 | `touchButtons()` | 触屏 HUD 按钮几何 `[{id,x,y,r}]`（engine 命中检测+绘制共用，所见即所点） |
 | `hitButton(p)` | 命中检测（触屏按钮优先于点击移动） |
-| `down(action)` / `keyFor(a)` / `setKey(a,code)` | Q57 按键自定义（存 LS `keymap`，与默认值合并兼容旧存档） |
+| `down(action)` / `keyFor(a)` / `setKey(a,code)` | Q57 按键自定义（存 LS `keymap`，与默认值合并兼容旧存档）；action 含 `menu`（默认 `Escape`）→ `UI.escMenu()` |
 
 手柄标准映射（`PAD`）：左摇杆/十字键移动，A=交互 B=格挡 X=跳跃 Y=药水 LB=切换攻击模式 RT/RB=攻击 Start=背包。
 
@@ -82,6 +85,8 @@
 | `tileAt(x,y)` | `{type, height, water, walk, jump, wall}` |
 | `heightAt(x,y)` | 原始层级 0/1/2（渲染热路径专用，不建对象；出界按0，世界边缘不画崖） |
 | `walkable(x,y)` / `jumpable(x,y)` / `isWater(x,y)` | 通行判定（水与墙阻挡，height=1 可跳，height=2 不可走） |
+| `freeTile(x,y)` / `boxPenalty(x,y)` / `passableBox(x,y)` | 碰撞专用（零分配）：`boxPenalty` 返回 0可走/1矮障跳过/2不可走（按脚印四角内缩0.02 判形位，容许贴墙走）；`passableBox`=boxPenalty 0。player 轴分离与 enemy.stepTo 共用 |
+| `raw()` | → `{tiles, height}` 原始数组引用（大地图/小地图烘焙 `UI.bakeTerrainMap`、测试改地形用） |
 | `regionOf(x,y)` | 区域归属 |
 | `fog.reveal(x,y)` / `fog.visible(x,y)` | Q17 迷宫战争迷雾 |
 | `TYPE` | 瓦片枚举 |
@@ -110,19 +115,20 @@
 - 只读属性：`x,y,level,exp,expTo,hp,maxHp,potions,mode,down,facing,jumping,blockUntil,dir`
 - `dir`：渲染朝向 `'s'|'n'|'e'|'w'`（移动主轴自动更新，斜向取绝对值大轴；`facing` 仅保留水平语义）
 - `spawn(x,y)` `update(dt)` `moveTo(x,y)`（A*寻路） `setMode('on'|'off'|'half')`（Q19 half=原地打不追击）
-- `gainExp(n)`（Q31 满级溢出转银币20%） `takeDamage(n)`（格挡/闪避/不死金牌判定）
+- `gainExp(n)`（Q31 满级溢出转银币20%） `takeDamage(n)`（**入口即乘 `ENEMY_DMG_MULT=0.1`**——敌人近战/弹道/范围技全部经此；其后依次格挡减伤50%、闪避、`def×0.1`、下限1点）
 - `heal(n)` `usePotion()`（Q62） `block()`（Q23 减伤50%/2s/CD3s） `jump()`（Q21 伪跳跃）
 - `rescue()` / `revive()`（Q26/Q66 掉10%银币回营地）；`_raw` 供存档访问内部状态
 
 ### 7.4 LG.Enemy（js/game/enemy.js）
 - `setDifficulty(d)` `spawnRegion(region)`（Q63 密度×难度） `spawnBoss(region)`（可重复 Q65）
 - `update(dt)`（fixed=弹幕、slow=警戒5格追击/脱战回家 Q74、精英/BOSS技能循环）
-- `damage(e,n)` `list[]` `clear()`
+- `damage(e,n,flags)` `list[]` `clear()`；`flags={crit,tri}` 透传给 `enemy_hit` 供飘字分级（缺省=普通白字）
 
 ### 7.5 LG.Combat（js/game/combat.js）
 - `init()` 订阅战斗事件；`update(dt)` 推进弹道+特效+玩家自动攻击
 - `forceSwing()` 手动攻击（J键/手柄RT）：无视"攻击模式关"，9格内有敌则索敌出击，否则朝面向空挥
 - `projectiles[]` `effects[]`（text/slash/warn/aoe，Q25 轻量反馈）
+- 飘字分级（P0）：`enemy_hit` 按 flags 决定 text 特效 `size/color/life` —— 普通 14/#fff、暴击 18/#ffd777、三倍暴击 24/#ff7a3c；近战/魔法传 `{crit,tri}`，远程弹道把整颗 `p`（创建时记录 crit/tri）传给 `Enemy.damage`
 
 ### 7.6 LG.Quest（js/game/quest.js）
 - `init()` 构建主线（各区域BOSS讨伐链）+支线（击杀/探索/收集/护送 Q39/Q40）
@@ -151,6 +157,16 @@
   `.eq-col` 装备列带 `.slot-tag` 槽位标签 + `.bag-grid` 40 格 + `.item-card` 详情卡；小屏（≤720px）装备横排单行
 - `renderSettings()`：menu 场景打开时追加 `#s-back` 返回按钮（回 `Engine.openMenu`）
 - `charCreate(cb)`（Q51，预览走 `.cc-frame` 展示框、性别按钮 `.btn.on` 选中态） `dialog(npc,lines)` `tutorial()`（Q67 可跳过）
+- `hudHit(c)`（P0 阶段十三）→ `'mode'|'settings'|'tracker'|'minimap'|null`：HUD 热区命中，坐标=物理 CSS 像素；
+  drawHUD 每帧缓存 `hudRects`，engine 点击分发：mode→切模式、settings→设置页、tracker→任务页、minimap→大地图页
+- `escMenu()`（keymap.menu=Escape）：只接管"无面板"与 `dataset.page` 自标的页面面板（bag/stat/quest/map/settings），
+  角色创建/商店/对话等模态面板不劫持（交还各自关闭按钮）
+- `renderQuests(npc)`：除 active 进度外新增「可接任务」区（按 NPC 区域过滤，排除 escort 与无进度来源任务）——
+  修复 `Quest.accept` 此前无任何调用方的死路
+- `drawHUD()` 阶段十三：手机 `U=W<760?0.5:(W<1100?0.75:1)` 整体虚拟坐标缩放（`fs()` 字号保底10物理像素）；
+  左上铭牌下任务追踪条（可提交优先→active[0]→引导找营地首领；屏内金菱形/屏外边缘箭头+距离）；
+  右下小地图（96/128 物理像素，复用 `bakeTerrainMap` 1.2s 重烘焙 + 玩家白点 + `hudObjective()` 目标金菱形 + 金框）
+- `bakeTerrainMap(g,S)`：按 `Terrain.raw()` 逐像素烘焙真实地形（类型色+高差增亮/压暗+迷宫未探索压黑），大地图(480)/小地图(128) 共用
 - 地图页点击即传送（Q13）；设置含音量/亮度/按键/语言（Q49/Q57）
 
 ## 8. 联机模块
@@ -163,6 +179,7 @@
 
 ### 8.2 LG.Lobby（js/net/lobby.js）
 - `show()` 大厅面板（Q52 在线列表+房间+角色形象） `players[]`
+- `startSolo()` 单人直开：主菜单「开始游戏」→ 直接建 1 人房开局（不经大厅；反馈⑦"开始游戏与联机大厅在一起"的拆分入口）
 - 确认开局 emit `start_game {players, host}`；单人=1人房（Q1）
 
 ## 9. LG.Engine（js/core/engine.js）— 装配层
@@ -170,25 +187,32 @@
 - `start()` 主菜单；`openMenu()` 回主菜单（UI 设置返回键/关闭回弹调用）；`scene` `fps`；`bindNet()`（main.js 调用）；`applyBrightness(v)` 亮度滤镜
 - 主菜单（阶段十二）：`.menu-panel` 标题画面结构（金属 LEGEND 立体字/lore/全宽按钮/署名）；
   menu/lobby 场景每帧 `renderAmbience(dt)` 氛围背景（深渊渐变+金晕+70 粒飘升金尘），替代旧纯黑死屏
+- 主菜单入口分离（阶段十三·反馈⑦）：「开始游戏」→ `Lobby.startSolo()` 直开单人；「联机大厅」为独立入口；
+  keymap.menu=Escape → `UI.escMenu()`（游戏内开关设置）
 - 内部职责：主循环、渲染裁剪、区域BGM切换、BOSS触发、宝箱布置、联机快照10Hz
 - 交互链路（handleHotkeys，每帧）：
-  1. 点按队列 `takePress` → 键盘动作（E=交互、J=手动攻击、Q/F/空格、B/M/L、Tab）
+  1. 点按队列 `takePress` → 键盘动作（E=交互、J=手动攻击、Q/F/空格、B/M/L、Tab、Esc=设置）
   2. `padAction` → 手柄同名动作
   3. 触屏按钮 `hitButton`（仅 `isTouchUI()` 即 pointer:coarse 设备）→ `doTouchButton`
-  4. 右上角模式按钮区（x > W-130 && y < 40）→ 切换攻击模式
+  4. 点击命中 `UI.hudHit(c)` → mode 切模式 / settings 设置 / tracker 任务 / **minimap 大地图**（阶段十三）
   5. 点击命中 NPC/宝箱（1.5格内）→ 范围内直接交互，否则 `moveTo` + `Engine._pending`
   6. 其余 → 移动寻路
 - `resolvePending()`（主循环每帧）：走到 `INTERACT_RANGE=2.6`（NPC）/ `CHEST_RANGE=2.2`（宝箱）内自动交互；
   玩家手动移动（WASD/摇杆）即取消；寻路失败（path 空且超距）提示 `unreachable`
 - 渲染辅助：`playerLook()` 本机外观+当前武器、`npcLook(n)` NPC 稳定差异化外观、
   悬停金环/红环高亮、`[E] 交互` 头顶提示、虚拟摇杆与触屏按钮绘制
+- P0 渲染打磨（阶段十三）：
+  - **落点菱形**：地形循环后画 `Player.path` 末项脉冲金菱形（"正要走到哪"）
+  - **伪光照 `drawLighting()`**：特效层后以玩家为中心铺径向暗角（maze 0.60 / void 0.66 / castle 0.50 / 其它 0.34）
+  - **主题粒子**：`loop()` 每帧 `updateParticles(dt)`，特效层后 `drawParticles()`；42 粒屏幕空间池，
+    按 `region.biome` 换主题（plain/farm/coast/maze/rock/snow/castle/void/default → PARTICLE_THEME 色速表）
 
 ### 事件总线表（跨模块契约）
 
 | 事件 | 触发方 → 订阅方 | 数据 |
 |---|---|---|
 | `enemy_melee/enemy_shoot/enemy_skill` | enemy → combat | enemy 实例 |
-| `enemy_hit/enemy_dead/enemy_killed` | combat/enemy → loot/quest/ui | `{e,n}` 或 enemy |
+| `enemy_hit/enemy_dead/enemy_killed` | combat/enemy → loot/quest/ui | `{e,n,flags?}`（flags=`{crit,tri}`）或 enemy |
 | `damage/dodge` | player → combat/ui | `{target,amount}` |
 | `player_down` | player → ui | player |
 | `levelup` | player → ui | lv |
