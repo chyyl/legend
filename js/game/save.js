@@ -108,6 +108,7 @@
     const d = raw(slot);
     if (!d) return false;
     LG.Terrain.generate(d.seed);
+    if (LG.Decor) LG.Decor.generate(d.seed); // 阶段二十四：同种子同步重建景物（幂等）
     apply(d);
     LG.Enemy.clear();
     LG.NPC.spawnAll();

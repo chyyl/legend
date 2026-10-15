@@ -34,6 +34,9 @@
   let fog = null; // 迷宫迷雾：Uint8 0=未探索 1=可见
   let mazeIdx = -1; // 黑暗迷宫区域下标（渲染时 O(1) 判定，避免每瓦片扫描11个区域）
   let ready = false; // 地形是否已生成（引擎在生成前跳过世界逻辑）
+  /* 阶段二十四：桥格集合 —— buildRoads 把路压过水面时登记索引（y*W+x）。
+     桥面渲染/大地图描色/灯柱摆放同源于此（跨海大桥水道与骷髅岛护城河通用）。 */
+  let bridgeTiles = null;
 
   /* 值噪声：用种子随机网格做平滑插值，得到连续地形起伏 */
   function makeNoise(seed, grid) {
@@ -59,6 +62,7 @@
     height = new Uint8Array(W * W);
     regionMap = new Uint8Array(W * W);
     fog = new Uint8Array(W * W);
+    bridgeTiles = new Set();
 
     const nElev = makeNoise(seed, 64);      // 地势起伏（兼海岸扰动）
     const nHill = makeNoise(seed + 3, 40);  // 台地高差（低频 -> 成片台阶，非碎点）
@@ -120,6 +124,12 @@
           if (bd <= 45) h = 0; // 岛心保平
           else if (bd < 75) { type = T_WATER; h = 0; } // 护城水域
         }
+        /* 阶段二十四·幸存者营地（反馈"这是幸存者营地，不是大草原"）：
+           中心踩踏压实的黄土广场，向外草土混杂渐变——与 decor.js 帐篷/栅栏环相配 */
+        if (rg.id === 'camp') {
+          if (bd <= 13) type = T_DIRT;
+          else if (bd < 36 && nMoist(x, y) > 0.42) type = T_DIRT;
+        }
         /* 墙体三格厚：480px 底图每 4.17 格采一格，单格墙线会被漏采（实测 237 格墙在地图上不可见）；
            三格保证至少命中一行采样，主视口挤出后也更有城墙体量 */
         if (wallRg && y >= wallRg.cy - 71 && y <= wallRg.cy - 69 && x >= wallRg.cx - 120 && x <= wallRg.cx + 120) {
@@ -170,6 +180,7 @@
             const px = nx + ox, py = ny + oy;
             if (px < 0 || py < 0 || px >= W || py >= W) continue;
             const i = py * W + px;
+            if (tiles[i] === T_WATER) bridgeTiles.add(i); // 压过水面=桥格（阶段二十四桥面渲染）
             tiles[i] = T_ROAD; height[i] = 0; // 含水面/城墙：跨水即桥、穿墙成关口
           }
       }
@@ -279,18 +290,21 @@
     if (!ready || !inb(x, y)) return 0;
     return height[(y | 0) * W + (x | 0)];
   }
-  function walkable(x, y) { return tileAt(x, y).walk; }
+  function walkable(x, y) { return tileAt(x, y).walk && !(LG.Decor && LG.Decor.solidAt(x, y)); }
   function jumpable(x, y) { return tileAt(x, y).jump; }
   function isWater(x, y) { const t = tileAt(x, y); return t.water; }
 
   /* 零分配可走判定（与 tileAt().walk 同语义；脚印盒碰撞热路径每帧多次调用，
-     走 tileAt 会每调一次建一个对象，GC 压力大） */
+     走 tileAt 会每调一次建一个对象，GC 压力大）。
+     阶段二十四：叠加实心景物占格（decor.solidAt——帐篷/木箱/石塔挡人，
+     与视觉开关解耦：关装饰只停渲染，碰撞与寻路恒定不漂移） */
   function freeTile(x, y) {
     if (!ready) return false;
     x = x | 0; y = y | 0;
     if (!inb(x, y)) return false;
     const i = y * W + x;
-    return tiles[i] !== T_WATER && tiles[i] !== T_WALL && height[i] !== 2;
+    if (tiles[i] === T_WATER || tiles[i] === T_WALL || height[i] === 2) return false;
+    return !(LG.Decor && LG.Decor.solidAt(x, y));
   }
 
   /* 脚印盒碰撞（修复"人物可以穿过墙与海一部分"）：
@@ -339,5 +353,7 @@
             WATER: T_WATER, ROAD: T_ROAD, WALL: T_WALL, CASTLE: T_CASTLE, VOID: T_VOID, FENCE: T_FENCE },
     // 供 save.js 读取种子+增量策略（Q59）；regionMap 供 ui.js 大地图画区域分界线（阶段二十二）
     raw: () => ({ tiles, height, regionMap }),
+    // 桥格集合（阶段二十四）：buildRoads 压过水面的路面索引；decor/ui 同源取用
+    bridgeTiles: () => bridgeTiles,
   };
 })();

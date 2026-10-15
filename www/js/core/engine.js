@@ -200,6 +200,8 @@
     LG.Quest.init();
     LG.Combat.init();
     LG.NPC.spawnAll();
+    // 区域景物生成（阶段二十四）：须在地形之后、宝箱布置之前（宝箱/敌人经 walkable 避开实心景物）
+    if (LG.Decor) LG.Decor.generate(saved ? saved.seed : LG.Config.SEED);
     LG.Enemy.clear();
     LG.Enemy.setDifficulty(saved ? saved.difficulty : LG.Net.difficulty);
     const camp = LG.Config.REGIONS.find((r) => r.id === 'camp');
@@ -477,18 +479,23 @@
     for (let y = y0; y <= y1; y++) {
       for (let x = x0; x <= x1; x++) {
         // 迷宫迷雾（Q17）：O(1) 区域判定，避免每瓦片扫描
-        if (LG.Terrain.isMazeAt(x, y) && !LG.Terrain.fog.visible(x, y)) continue;
+        const isMz = LG.Terrain.isMazeAt(x, y);
+        if (isMz && !LG.Terrain.fog.visible(x, y)) continue;
         const t = LG.Terrain.tileAt(x, y);
         const name = typeNames[t.type] || 'grass';
         // 2.5D 高差挤出：邻层差决定崖壁/落影/亮棱（heightAt 原始查询零分配，烘焙图一次drawImage）
         const h = t.height;
         const img = LG.Assets.groundTile(name, h,
           h - LG.Terrain.heightAt(x, y + 1),      // 南邻更低 -> 本片底边崖壁
-          LG.Terrain.heightAt(x, y - 1) - h);     // 北邻更高 -> 本片顶边落影（负数=亮棱）
+          LG.Terrain.heightAt(x, y - 1) - h,       // 北邻更高 -> 本片顶边落影（负数=亮棱）
+          isMz);                                   // 阶段二十四：迷宫整体压暗染色（黑暗感）
         const s = LG.Camera.worldToScreen(x, y);
         g.drawImage(img, s.x, s.y, draw + 1, draw + 1);
       }
     }
+
+    // 区域景物·下层（阶段二十四：桥面木板/矮景物/玩家身后的高物，先于一切实体）
+    if (LG.Decor) LG.Decor.drawUnder(g, view, draw);
 
     // 点击寻路落点菱形（P0）：脉冲金框标示"正要走到哪"（path 消费制，末项=剩余终点）
     if (LG.Player.path && LG.Player.path.length) {
@@ -590,6 +597,9 @@
     if (pdir === 'w') { g.translate(ps.x + draw, 0); g.scale(-1, 1); g.drawImage(hero, 0, ps.y + jumpOffset, draw, draw); }
     else g.drawImage(hero, ps.x, ps.y + jumpOffset, draw, draw);
     g.restore();
+
+    // 区域景物·上层（阶段二十四：玩家身前的高物——帐篷/房屋盖在人物之上，前后遮挡成立）
+    if (LG.Decor) LG.Decor.drawOver(g, view, draw);
 
     // 弹道
     LG.Combat.projectiles.forEach((p) => {

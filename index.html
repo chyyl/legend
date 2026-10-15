@@ -10,7 +10,7 @@
 
   依赖顺序（下述脚本彼此通过 window.LG 命名空间通信，互不直接引用内部实现）：
     data/i18n -> core/config -> core/utils -> core/assets -> core/input
-    -> audio/audio -> world/terrain -> world/pathfinding -> world/camera
+    -> audio/audio -> world/terrain -> world/pathfinding -> world/camera -> world/decor
     -> game/loot -> game/inventory -> game/player -> game/enemy
     -> game/combat -> game/quest -> game/npc -> game/save -> game/ui
     -> net/net -> net/lobby -> core/engine -> core/updater -> main
@@ -62,6 +62,7 @@
   <script src="js/world/terrain.js"></script>
   <script src="js/world/pathfinding.js"></script>
   <script src="js/world/camera.js"></script>
+  <script src="js/world/decor.js"></script>
   <!-- ===== 玩法层 ===== -->
   <script src="js/game/loot.js"></script>
   <script src="js/game/inventory.js"></script>

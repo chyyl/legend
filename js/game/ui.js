@@ -413,6 +413,8 @@
        ④ 迷宫未探索由纯黑（像"空洞"）改为暗棋盘迷雾
        ⑤ 区域分界线：Voronoi 色块硬切拼盘 → 陆地两侧画 1px 暗界（行政图质感） */
     const roadC = [205, 178, 118];
+    const plankC = [186, 142, 86]; // 桥面木板（阶段二十四：跨海大桥/护城河在大地图可辨识）
+    const bset = LG.Terrain.bridgeTiles ? LG.Terrain.bridgeTiles() : null;
     const img = g.createImageData(S, S), d = img.data;
     const span = (N / S) | 0; // 每像素覆盖格数（2000/480≈4）
     for (let py = 0; py < S; py++) {
@@ -422,23 +424,24 @@
         const wx = Math.min(N - 1, (px * N / S) | 0);
         const x2 = Math.min(N - 1, wx + span + 1);
         const i = wy * N + wx, o = (py * S + px) * 4;
+        const mz = LG.Terrain.isMazeAt(wx, wy);
         // 迷宫未探索：暗棋盘迷雾（与主视口一致不绘制，图上不再是一块死黑空洞）
-        if (LG.Terrain.isMazeAt(wx, wy) && !LG.Terrain.fog.visible(wx, wy)) {
+        if (mz && !LG.Terrain.fog.visible(wx, wy)) {
           const ck = (px ^ py) & 1;
           d[o] = 11 + ck * 3; d[o + 1] = 13 + ck * 3; d[o + 2] = 18 + ck * 5; d[o + 3] = 255;
           continue;
         }
-        /* 覆盖扫描：命中路(6)/墙(7)则该像素直接画路/墙（见 ①） */
-        let hit = 0; // 0 无 1 墙 2 路
+        /* 覆盖扫描：命中路(6)/墙(7)则该像素直接画路/墙（见 ①）；含桥格则改画木板色 */
+        let hit = 0, deck = false; // 0 无 1 墙 2 路
         for (let yy = wy; yy <= y2 && hit !== 2; yy++) {
           for (let xx = wx; xx <= x2 && hit !== 2; xx++) {
             const t = ts[yy * N + xx];
-            if (t === 6) hit = 2;
+            if (t === 6) { hit = 2; if (bset && bset.has(yy * N + xx)) deck = true; }
             else if (t === 7 && !hit) hit = 1;
           }
         }
         let c;
-        if (hit === 2) c = roadC;                                   // 环线主干道（提亮暖金）
+        if (hit === 2) c = deck ? plankC : roadC;                    // 环线主干道（提亮暖金）/ 桥面
         else if (hit === 1) c = rgb[7];                             // 城墙
         else if (ts[i] === 5) {
           const dd = Math.hypot(wx - N / 2, wy - N / 2) / 950       // 离岸距离（1=近岸）
@@ -457,6 +460,7 @@
           k *= 1 + (h - hL) * 0.16 + (h - hU) * 0.10;
           if (k < 0.22) k = 0.22; else if (k > 2.2) k = 2.2;
         }
+        if (mz) k *= 0.55; // 已探索迷宫整体压暗（阶段二十四，与主视口暗化一致）
         d[o] = Math.min(255, c[0] * k);
         d[o + 1] = Math.min(255, c[1] * k);
         d[o + 2] = Math.min(255, c[2] * k);
@@ -659,6 +663,8 @@
       <div style="text-align:center"><button class="btn small" id="s-wlv-mode">${LG.Config.WORLD_LEVEL.auto ? T()('manual') : T()('auto')}</button></div>
       <div class="slider-row"><label>${T()('language')}</label>
         <button class="btn small" id="s-lang">中文 / EN</button></div>
+      <div class="slider-row"><label>${T()('decor_fx')}</label>
+        <button class="btn small" id="s-decor">${LG.Decor && LG.Decor.enabled ? T()('decor_on') : T()('decor_off')}</button></div>
       <div style="text-align:center;margin-top:8px">
         <button class="btn" id="s-map">${T()('minimap_view')}</button>
         <button class="btn" id="s-key">${T()('keybind')}</button>
@@ -693,6 +699,12 @@
     };
     syncWlv();
     p.querySelector('#s-lang').onclick = () => { LG.I18n.set(LG.I18n.lang === 'zh' ? 'en' : 'zh'); closePanel(); LG.U.bus.emit('lang_changed'); };
+    // 装饰景物开关（阶段二十四）：只控渲染层——碰撞/寻路恒定，关掉不改世界手感
+    const decorBtn = p.querySelector('#s-decor');
+    if (decorBtn) decorBtn.onclick = () => {
+      LG.Decor.setEnabled(!LG.Decor.enabled);
+      decorBtn.textContent = LG.Decor.enabled ? T()('decor_on') : T()('decor_off');
+    };
     p.querySelector('#s-map').onclick = () => renderMap();
     p.querySelector('#s-log').onclick = () => renderChangelog();
     p.querySelector('#s-key').onclick = () => renderKeybind();

@@ -60,6 +60,7 @@
       dismantle_done: '售出{0}件 +{1}银',
       atk: '攻击', aspd: '攻速', range: '射程', crit: '暴击', font_scale: '字体大小',
       ui_scale: 'UI大小', world_lv: '世界最高等级', auto: '自动', manual: '手动', random: '随机',
+      decor_fx: '装饰景物', decor_on: '开', decor_off: '关',
     },
     en: {
       title: 'LEGEND',
@@ -105,6 +106,7 @@
       dismantle_done: 'Sold {0} items +{1} silver',
       atk: 'ATK', aspd: 'Atk Spd', range: 'Range', crit: 'Crit', font_scale: 'Font Size',
       ui_scale: 'UI Scale', world_lv: 'World Max Lv', auto: 'Auto', manual: 'Manual', random: 'Random',
+      decor_fx: 'Decor', decor_on: 'On', decor_off: 'Off',
     },
   };
 

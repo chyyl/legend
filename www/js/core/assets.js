@@ -308,8 +308,8 @@
                     <0 本片更高 -> 本片顶边亮棱（区分同色平面）
      崖壁画在高层瓦片自身底边内（单瓦片内完成，零跨瓦片遮挡顺序问题）。
      ========================================================================== */
-  function groundTile(type, level, cliffS, northDelta) {
-    const key = 'gt:' + type + ':' + level + ':' + cliffS + ':' + northDelta;
+  function groundTile(type, level, cliffS, northDelta, dark) {
+    const key = 'gt:' + type + ':' + level + ':' + cliffS + ':' + northDelta + (dark ? ':d' : '');
     return mk(key, T, T, (g) => {
       g.drawImage(tile(type), 0, 0);
       const cols = TILE_COLORS[type] || TILE_COLORS.grass;
@@ -332,6 +332,8 @@
       // 本片高于北邻：顶边亮棱（0.12→0.22）
       const rim = Math.min(Math.max(-northDelta, 0), 2);
       if (rim > 0 && cliff === 0) { g.fillStyle = 'rgba(255,255,255,0.22)'; g.fillRect(0, 0, T, 1); }
+      // 阶段二十四：黑暗迷宫暗化覆膜（含崖壁，整体压进冷暗调）
+      if (dark) { g.fillStyle = 'rgba(8,6,18,0.42)'; g.fillRect(0, 0, T, T); }
     });
   }
 
