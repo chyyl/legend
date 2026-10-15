@@ -1,16 +1,18 @@
 async (page) => {
-  /* t8.js —— 阶段二十：背包详情卡/武器前缀/一键分解/字体大小/地图字体回归
+  /* t8.js —— 阶段二十（①②③⑥⑦⑩）+ 阶段二十二（④⑤⑧）：背包详情卡/强化感知/装备对比/武器前缀/一键分解/字体/地图回归
      ① 武器前缀：rollWeapon 均带前缀（词池内）；初始武器带前缀；存读档后仍在
      ② 行囊详情卡：点击物品 → 卡内有「前缀·基础名」标题/数值行/装备强化出售三按钮；
         pbody 滚到底详情卡仍吸底可见（反馈"装备和强化按钮找不到（在背包界面底部）"）
      ③ 已装备详情：点击装备槽 → 显示详情（含卸下按钮）且不再"点一下直接卸下"
         （反馈"不能查看装备武器详情"）；点卸下 → 物品回背包
-     ④ 一键分解两段式：首点变"确认分解？"不执行；再点分解行囊折银 + toast
-     ⑤ 字体大小：设置滑杆默认 1（反馈"默认字体大小1×"）；改 2 → 面板 zoom=2/--fs-inv=0.5 即时生效；
+     ④ 强化感知（阶段二十二反馈"无法强化无效"）：强化后卡面数值必须变化、按钮标价、强化加成行
+     ⑤ 装备对比列（反馈"无法对比装备武器"）：行囊 vs 当前装备 / 已装备 vs 行囊最佳，带差值箭头
+     ⑥ 一键分解两段式：首点变"确认分解？"不执行；再点分解行囊折银 + toast
+     ⑦ 字体大小：设置滑杆默认 1（反馈"默认字体大小1×"）；改 2 → 面板 zoom=2/--fs-inv=0.5 即时生效；
         再改 3 → 桌面面板横向仍在视口内（vw 补偿极限校验）
-     ⑥ 地图字体：fs3 下打开大地图，画布 font 走表捕获到 45px（15×3 区域名，基础字号 11→15 加大）
-     ⑦ 全新触屏上下文默认字号：fs=1、--fs-inv=1、无用户标记（反馈"默认字体大小1×"）
-     ⑧ 全程零报错
+     ⑧ 地图字体+环线道路烘焙连续性：fs3 下打开大地图，画布 font 走表捕获到 45px（15×3 区域名，基础字号 11→15 加大）
+     ⑨ 全新触屏上下文默认字号：fs=1、--fs-inv=1、无用户标记（反馈"默认字体大小1×"）
+     ⑩ 全程零报错
      运行：browser_run_code_unsafe({ filename: '.playwright-mcp/t8.js' }) */
   const S = 'C:/Users/L1896/Desktop/legend/.playwright-mcp/';
   const out = { errors: [], pass: {} };
@@ -88,8 +90,66 @@ async (page) => {
   });
   out.pass.eqs = out.eqs.had && out.eqs.stillEq && out.eqs.viewOk && out.eqs.uneqOk;
 
-  /* ===== ④ 一键分解（两段式） ===== */
+  /* ===== ④ 强化感知（阶段二十二反馈"无法强化无效"：卡面数值须随强化变化 + 按钮标价） ===== */
+  out.enh22 = await p.evaluate(() => {
+    LG.Inv.state.silver = 5000;
+    const info = document.getElementById('item-info');
+    // 行囊里应已有武器（组②③放入并卸回）；点第一个行囊武器 → 详情卡
+    const slot = document.querySelector('[data-bag]');
+    const it = LG.Inv.bag[+slot.dataset.bag];
+    it.stats.dmg = 50; // 固定主词条：保证 round(50×1.05)=53 必可见（低伤词条强化后可能四舍五入不变）
+    slot.click();
+    const card0 = info.querySelector('.ic-stats').textContent;
+    const btnTxt = info.querySelector('[data-a=enh]').textContent;
+    const lv0 = it.lv, silver0 = LG.Inv.silver;
+    info.querySelector('[data-a=enh]').click();
+    // 强化回调里 renderBag() 会整体重建面板——旧 info 已游离，必须现取新节点
+    const inf2 = document.getElementById('item-info');
+    const card1 = inf2.querySelector('.ic-stats').textContent;
+    const enhLine = (inf2.querySelector('.ic-enh') || {}).textContent || '';
+    return {
+      lvUp: it.lv === lv0 + 1, paid: silver0 - LG.Inv.silver === 50 * lv0,
+      statChanged: card0 !== card1,          // 核心：强化后卡面数字必须变（旧版纹丝不动）
+      btnPrice: /\d/.test(btnTxt),           // 按钮标价（反馈"无法强化"：费用可见）
+      enhLine: enhLine.indexOf('强化加成') >= 0 && enhLine.indexOf('Lv' + it.lv) >= 0,
+    };
+  });
+  out.pass.enh22 = out.enh22.lvUp && out.enh22.paid && out.enh22.statChanged
+    && out.enh22.btnPrice && out.enh22.enhLine;
+
+  /* ===== ⑤ 装备对比列（阶段二十二反馈"无法对比装备武器"） ===== */
+  out.cmp22 = await p.evaluate(() => {
+    const inf = () => document.getElementById('item-info'); // renderBag 会重建面板，一律现取
+    // 行囊物品视图：有同槽装备则应有对比列（组②③后装备槽为空 → 先装一把再看别的）
+    if (!LG.Inv.equip.weapon) {
+      const wi = LG.Inv.bag.findIndex((x) => x && x.slot === 'weapon');
+      LG.Inv.equipItem(wi);
+      LG.UI.renderBag();
+    }
+    const slots = Array.from(document.querySelectorAll('[data-bag]'));
+    const slot = slots.find((s) => {
+      const v = LG.Inv.bag[+s.dataset.bag];
+      return v && v.slot === 'weapon' && v !== LG.Inv.equip.weapon;
+    });
+    if (slot) slot.click();
+    const v1 = {
+      cmp: !!inf().querySelector('.ic-stats.cmp'),
+      vs: /对比/.test(inf().textContent),
+      rows: inf().querySelectorAll('.ic-row').length,
+      marks: inf().querySelectorAll('.ic-row i.up, .ic-row i.dn, .ic-row i.eq').length,
+    };
+    // 已装备物品视图：对比行囊最佳（行囊还有其他武器）
+    document.querySelector('[data-eqslot=weapon]').click();
+    const v2 = { cmp: !!inf().querySelector('.ic-stats.cmp'), rows: inf().querySelectorAll('.ic-row').length };
+    return { bagView: v1, eqView: v2 };
+  });
+  out.pass.cmp22 = out.cmp22.bagView.cmp && out.cmp22.bagView.vs
+    && out.cmp22.bagView.rows >= 4 && out.cmp22.bagView.marks >= 4
+    && out.cmp22.eqView.cmp && out.cmp22.eqView.rows >= 4;
+
+  /* ===== ⑥ 一键分解（两段式） ===== */
   out.dism = await p.evaluate(() => {
+    document.querySelectorAll('.toast').forEach((t) => t.remove()); // 清掉组④强化残留 toast（防抢读旧文案）
     const before = { silver: LG.Inv.silver,
       expect: LG.Inv.bag.reduce((n, it) => n + (it ? LG.Inv.priceOf(it) : 0), 0),
       n: LG.Inv.bag.filter(Boolean).length };
@@ -105,7 +165,7 @@ async (page) => {
   out.pass.dism = out.dism.armed && out.dism.toastOk && out.dism.ok;
   await p.evaluate(() => document.querySelectorAll('.panel').forEach((x) => x.remove())); // 清场
 
-  /* ===== ⑤ 字体大小设置 ===== */
+  /* ===== ⑦ 字体大小设置 ===== */
   out.font = await p.evaluate(() => {
     LG.UI.togglePage('settings', LG.UI.renderSettings);
     const sl = document.querySelector('#s-font');
@@ -124,7 +184,7 @@ async (page) => {
   out.pass.font = out.font.defOk && out.font.zoom2 && out.font.invOk && out.font.fit;
   await p.screenshot({ path: S + 't8-settings.png' });
 
-  /* ===== ⑥ 地图字体随缩放 ===== */
+  /* ===== ⑧ 地图字体随缩放 + 环线道路烘焙连续性 ===== */
   out.map = await p.evaluate(() => {
     const seen = [];
     const proto = CanvasRenderingContext2D.prototype;
@@ -138,16 +198,36 @@ async (page) => {
     const panel = document.querySelector('.panel');
     const cv = document.querySelector('#bigmap');
     const r = cv.getBoundingClientRect();
+    /* 环线道路烘焙连续性（阶段二十二反馈"地图做的不够好"：路被 4.17 格步长单点采样漏成虚线
+       → 覆盖扫描重绘后，11 段环线中点在底图上应呈暖金路面色；迷宫未探索区设计上压黑不计） */
+    const g2 = cv.getContext('2d');
+    let roadHit = 0, tested = 0;
+    for (let ri = 0; ri < LG.Config.REGIONS.length; ri++) {
+      const a = LG.Config.REGIONS[ri], b = LG.Config.REGIONS[(ri + 1) % LG.Config.REGIONS.length];
+      const wmx = (a.cx + b.cx) / 2, wmy = (a.cy + b.cy) / 2;
+      if (LG.Terrain.isMazeAt(wmx | 0, wmy | 0)) continue;
+      tested++;
+      const mx = Math.round(wmx * 0.24), my = Math.round(wmy * 0.24); // 首开 z=1 全图：2000→480
+      let ok = false;
+      for (let dy = -2; dy <= 2 && !ok; dy++) {
+        for (let dx = -2; dx <= 2 && !ok; dx++) {
+          const q = g2.getImageData(mx + dx, my + dy, 1, 1).data;
+          if (q[0] > 150 && q[1] > 120 && q[0] > q[2] + 30) ok = true; // 暖金路面 (205,178,118)±明暗/界线
+        }
+      }
+      if (ok) roadHit++;
+    }
     cv.dispatchEvent(new WheelEvent('wheel', { deltaY: -120, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, bubbles: true }));
     Object.defineProperty(proto, 'font', d); // 还原
     const has45 = seen.some((f) => f.indexOf('45px') >= 0); // 15px × 3（基础字号 11→15 加大）
     const zoomOk = getComputedStyle(panel).zoom === '3';
-    return { has45, zoomOk, sample: seen.filter((f) => f.indexOf('px') >= 0).slice(0, 3) };
+    return { has45, zoomOk, roadOk: tested > 0 && roadHit === tested, roadHit, tested,
+             sample: seen.filter((f) => f.indexOf('px') >= 0).slice(0, 3) };
   });
-  out.pass.map = out.map.has45 && out.map.zoomOk;
+  out.pass.map = out.map.has45 && out.map.zoomOk && out.map.roadOk;
   await p.screenshot({ path: S + 't8-map.png' });
 
-  /* ===== ⑦ 全新触屏上下文默认字号（应为 1×） ===== */
+  /* ===== ⑨ 全新触屏上下文默认字号（应为 1×） ===== */
   out.mobile = await (async () => {
     const c2 = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 });
     const mp = await c2.newPage();
@@ -165,7 +245,7 @@ async (page) => {
   })();
   out.pass.mobile = out.mobile.fs === 1 && out.mobile.inv === 1 && !out.mobile.flag;
 
-  /* ===== ⑧ 零报错 ===== */
+  /* ===== ⑩ 零报错 ===== */
   out.pass.noErrors = out.errors.length === 0;
   out.allPass = Object.values(out.pass).every(Boolean);
   out.errors = out.errors.slice(0, 12);

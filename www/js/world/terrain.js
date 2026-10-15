@@ -338,7 +338,7 @@
     fog: { reveal, visible: fogVisible },
     TYPE: { GRASS: T_GRASS, DIRT: T_DIRT, SAND: T_SAND, SNOW: T_SNOW, ROCK: T_ROCK,
             WATER: T_WATER, ROAD: T_ROAD, WALL: T_WALL, CASTLE: T_CASTLE, VOID: T_VOID, FENCE: T_FENCE },
-    // 供 save.js 读取种子+增量策略（Q59）
-    raw: () => ({ tiles, height }),
+    // 供 save.js 读取种子+增量策略（Q59）；regionMap 供 ui.js 大地图画区域分界线（阶段二十二）
+    raw: () => ({ tiles, height, regionMap }),
   };
 })();

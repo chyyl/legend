@@ -170,34 +170,78 @@
   }
 
   /* 物品详情卡（阶段二十重做，反馈"不能查看装备武器详情，装备和强化按钮找不到"）：
-     全量数值 + 前缀名标题 + 品质 + 羁绊 + 操作按钮。
+     全量数值 + 前缀名标题 + 品质 + 羁绊 + 操作按钮（阶段二十二再增：强化后有效值、装备对比列、按钮标价）。
      src：{bag:i}=行囊物品（装备/强化/出售）| {eq:slot}=已装备物品（卸下/强化）。 */
   function itemDetail(it, src) {
     const info = document.getElementById('item-info');
     if (!info || !it) return;
     const zh = LG.I18n.lang === 'zh';
     const bonds = it.bonds.map((b) => { const bd = LG.Config.BONDS.find(x => x.id === b); return bd ? (bd.zh || bd.en) : b; }).join(', ') || T()('no_bond');
-    let statRow;
-    if (it.slot === 'weapon') {
-      statRow = `<span>${T()('atk')} <b>${it.stats.dmg}</b></span>
-        <span>${T()('aspd')} <b>+${(it.stats.aspd || 0).toFixed(2)}</b></span>
-        <span>${T()('range')} <b>${(it.stats.range || 1).toFixed(1)}</b></span>
-        <span>${T()('crit')} <b>+${Math.round((it.stats.crit || 0) * 100)}%</b></span>`;
-    } else {
-      statRow = `<span>${T()('def')} <b>${it.stats.def || 0}</b></span>
-        <span>${T()('atk')} <b>${it.stats.dmg || 0}</b></span>
-        <span>${T()('move_speed')} <b>+${it.stats.spd || 0}</b></span>
-        <span>${T()('dodge')} <b>+${it.stats.dodge || 0}</b></span>`;
+    /* 词条有效值：与 calcStats 同口径（攻/防/攻速含强化 +5%/级；射程/暴击/移速/闪避不吃强化）
+       ——阶段二十二反馈"无法强化无效"：旧版显示物品原始值，强化后卡面数字纹丝不动 */
+    const valOf = (x, key) => {
+      const e = 1 + LG.Config.ENHANCE_PER_LV * (x.lv - 1);
+      if (x.slot === 'weapon') {
+        if (key === 'dmg') return Math.round(x.stats.dmg * e);
+        if (key === 'aspd') return +((x.stats.aspd || 0) * e).toFixed(2);
+        if (key === 'range') return +(x.stats.range || 1).toFixed(1);
+        return Math.round((x.stats.crit || 0) * 100);
+      }
+      if (key === 'def') return Math.round((x.stats.def || 0) * e);
+      if (key === 'dmg') return x.stats.dmg || 0;
+      if (key === 'spd') return x.stats.spd || 0;
+      return x.stats.dodge || 0;
+    };
+    const rows = it.slot === 'weapon'
+      ? [['atk', 'dmg'], ['aspd', 'aspd'], ['range', 'range'], ['crit', 'crit']]
+      : [['def', 'def'], ['atk', 'dmg'], ['move_speed', 'spd'], ['dodge', 'dodge']];
+    const fmt = (key, v) => (key === 'aspd' ? '+' + (+v).toFixed(2) : key === 'range' ? (+v).toFixed(1)
+      : key === 'crit' || key === 'dodge' ? '+' + v + '%' : key === 'spd' ? '+' + v : v);
+    /* 对比对象（反馈"无法对比装备武器"）：
+       行囊物品 → 同槽当前装备；已装备 → 行囊同槽有效主属性最高者；无则单列 */
+    let cmp = null;
+    if (src && src.bag !== undefined && src.bag !== null) cmp = LG.Inv.equip[it.slot] || null;
+    else if (src && src.eq) {
+      let best = null, bestS = -1;
+      LG.Inv.bag.forEach((b) => {
+        if (!b || b.slot !== it.slot || b === it) return;
+        const e = 1 + LG.Config.ENHANCE_PER_LV * (b.lv - 1);
+        const s = (b.slot === 'weapon' ? b.stats.dmg : (b.stats.def || 0)) * e;
+        if (s > bestS) { bestS = s; best = b; }
+      });
+      cmp = best;
     }
+    let statRow;
+    if (cmp) { // 对比列：本件值 | 对比件值+差值（▲绿=本件更优 ▼红=更差 ＝持平）
+      const fmtD = (key, d) => (key === 'aspd' ? (d > 0 ? '+' : '') + d.toFixed(2)
+        : key === 'range' ? (d > 0 ? '+' : '') + d.toFixed(1)
+        : (d > 0 ? '+' : '') + Math.round(d)); // 整数词条（攻/防/移速/暴击%/闪避%）
+      statRow = rows.map(([lbl, key]) => {
+        const a = valOf(it, key), b = valOf(cmp, key);
+        const d = Math.round((a - b) * 100) / 100;
+        const cls = d > 0 ? 'up' : d < 0 ? 'dn' : 'eq';
+        const mark = d > 0 ? '▲' + fmtD(key, d) : d < 0 ? '▼' + fmtD(key, d) : '＝';
+        return `<div class="ic-row"><span>${T()(lbl)}</span><b>${fmt(key, a)}</b><i class="${cls}">${fmt(key, b)} ${mark}</i></div>`;
+      }).join('');
+    } else {
+      statRow = rows.map(([lbl, key]) => `<span>${T()(lbl)} <b>${fmt(key, valOf(it, key))}</b></span>`).join('');
+    }
+    const enhTxt = it.lv >= LG.Config.MAX_LEVEL ? T()('enh_max')
+      : T()('enhance') + ' ' + LG.Inv.enhanceCost(it); // 按钮标价（反馈"无法强化"：费用/满级状态一目了然）
     const btns = src && src.eq
       ? `<button class="btn small" data-a="uneq">${T()('unequip')}</button>
-         <button class="btn small" data-a="enh">${T()('enhance')}</button>`
+         <button class="btn small" data-a="enh">${enhTxt}</button>`
       : `<button class="btn small" data-a="eq">${T()('equip')}</button>
-         <button class="btn small" data-a="enh">${T()('enhance')}</button>
+         <button class="btn small" data-a="enh">${enhTxt}</button>
          <button class="btn small" data-a="sell">${T()('sell')}</button>`;
+    const vsLine = cmp
+      ? `<div class="ic-vs">${src && src.eq ? T()('cmp_best') : T()('cmp_eq')}：<b class="q-${cmp.quality}">${itemTitle(cmp)}</b> ${cmp.quality} Lv${cmp.lv}</div>`
+      : '';
+    const enhLine = it.lv > 1 ? `<div class="ic-enh">${T()('enh_bonus')} +${5 * (it.lv - 1)}% · Lv${it.lv}</div>` : '';
     info.innerHTML = `<div class="ic-head"><b class="q-${it.quality}">${itemTitle(it)}</b>
         <span class="ic-meta"><b class="q-${it.quality}">${it.quality}</b> Lv${it.lv}</span></div>
-      <div class="ic-stats">${statRow}</div><div class="ic-bonds">[${bonds}]</div>
+      ${vsLine}<div class="ic-stats${cmp ? ' cmp' : ''}">${statRow}</div>${enhLine}
+      <div class="ic-bonds">[${bonds}]</div>
       <div class="ic-btns">${btns}</div>`;
     const eqB = info.querySelector('[data-a=eq]');
     if (eqB) eqB.onclick = () => {
@@ -320,35 +364,75 @@
   function bakeTerrainMap(g, S) {
     const raw = LG.Terrain.raw();
     if (!raw || !raw.tiles) return;
-    const N = LG.Config.SIZE, ts = raw.tiles, hs = raw.height;
+    const N = LG.Config.SIZE, ts = raw.tiles, hs = raw.height, rm = raw.regionMap;
     const C = LG.Assets.TILE_COLORS;
     const rgb = MAP_TYPES.map((n) => { // hex -> [r,g,b]（打开地图时解析一次）
       const h = ((C[n] || C.grass)[0] || '#3f6b3a').replace('#', '');
       const v = parseInt(h, 16);
       return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
     });
+    /* 阶段二十二（反馈"地图做的不够好"）烘焙升级：
+       ① 覆盖扫描画路/墙——3 宽路/3 厚墙常整条落在单点采样 4.17 格步长的间隙里，
+         环形主干道在图上时断时续；按像素覆盖区扫描，命中则整像素画路/墙（环线/长城连续可读）
+       ② 路面提亮暖金：原 #8a7a5a 与沙地同色系糊成一片
+       ③ 深浅海三档（离岸越远越深）+ 抖动过渡，岛轮廓立体、无生硬同心圆
+       ④ 迷宫未探索由纯黑（像"空洞"）改为暗棋盘迷雾
+       ⑤ 区域分界线：Voronoi 色块硬切拼盘 → 陆地两侧画 1px 暗界（行政图质感） */
+    const roadC = [205, 178, 118];
     const img = g.createImageData(S, S), d = img.data;
+    const span = (N / S) | 0; // 每像素覆盖格数（2000/480≈4）
     for (let py = 0; py < S; py++) {
       const wy = Math.min(N - 1, (py * N / S) | 0);
+      const y2 = Math.min(N - 1, wy + span + 1);
       for (let px = 0; px < S; px++) {
         const wx = Math.min(N - 1, (px * N / S) | 0);
+        const x2 = Math.min(N - 1, wx + span + 1);
         const i = wy * N + wx, o = (py * S + px) * 4;
-        // 迷宫未探索：与主视口一致（不绘制 -> 深底色）
+        // 迷宫未探索：暗棋盘迷雾（与主视口一致不绘制，图上不再是一块死黑空洞）
         if (LG.Terrain.isMazeAt(wx, wy) && !LG.Terrain.fog.visible(wx, wy)) {
-          d[o] = 11; d[o + 1] = 13; d[o + 2] = 18; d[o + 3] = 255; continue;
+          const ck = (px ^ py) & 1;
+          d[o] = 11 + ck * 3; d[o + 1] = 13 + ck * 3; d[o + 2] = 18 + ck * 5; d[o + 3] = 255;
+          continue;
         }
+        /* 覆盖扫描：命中路(6)/墙(7)则该像素直接画路/墙（见 ①） */
+        let hit = 0; // 0 无 1 墙 2 路
+        for (let yy = wy; yy <= y2 && hit !== 2; yy++) {
+          for (let xx = wx; xx <= x2 && hit !== 2; xx++) {
+            const t = ts[yy * N + xx];
+            if (t === 6) hit = 2;
+            else if (t === 7 && !hit) hit = 1;
+          }
+        }
+        let c;
+        if (hit === 2) c = roadC;                                   // 环线主干道（提亮暖金）
+        else if (hit === 1) c = rgb[7];                             // 城墙
+        else if (ts[i] === 5) {
+          const dd = Math.hypot(wx - N / 2, wy - N / 2) / 950       // 离岸距离（1=近岸）
+            + ((((wx * 7 + wy * 13) % 17) - 8) * 0.005);            // 抖动：三档过渡呈像素噪点而非同心圆弧
+          c = dd > 1.35 ? [26, 64, 98] : dd > 1.12 ? [36, 85, 126] : rgb[5];
+        } else c = rgb[ts[i]] || rgb[0];
         const h = hs[i];
-        const c = rgb[ts[i]] || rgb[0];
         /* 高差对比 + 山体阴影（2026-10-15 反馈"没有高低差"：只整块增亮/压暗读起来是色斑，
-          叠加坡向明暗才有立体起伏。光源西北：本格比西/上邻高=受光边提亮，低=背光边投影压暗） */
-        let k = h === 2 ? 0.52 : h === 1 ? 1.28 : 1;
-        const hL = hs[wy * N + (px > 0 ? Math.min(N - 1, ((px - 1) * N / S) | 0) : wx)];
-        const hU = hs[(py > 0 ? Math.min(N - 1, ((py - 1) * N / S) | 0) : wy) * N + wx];
-        k *= 1 + (h - hL) * 0.16 + (h - hU) * 0.10;
-        if (k < 0.22) k = 0.22; else if (k > 2.2) k = 2.2;
+          叠加坡向明暗才有立体起伏。光源西北：本格比西/上邻高=受光边提亮，低=背光边投影压暗）
+          路面除外：恒定亮度不参与明暗——路线必须全程清晰（阶段二十二反馈"地图做的不够好"，
+          取证：armory>snow 环线中点被背光压到 49,42,28 肉眼几乎不可见） */
+        let k = hit === 2 ? 1 : (h === 2 ? 0.52 : h === 1 ? 1.28 : 1); // 路面恒定（见下）
+        if (hit !== 2) {
+          const hL = hs[wy * N + (px > 0 ? Math.min(N - 1, ((px - 1) * N / S) | 0) : wx)];
+          const hU = hs[(py > 0 ? Math.min(N - 1, ((py - 1) * N / S) | 0) : wy) * N + wx];
+          k *= 1 + (h - hL) * 0.16 + (h - hU) * 0.10;
+          if (k < 0.22) k = 0.22; else if (k > 2.2) k = 2.2;
+        }
         d[o] = Math.min(255, c[0] * k);
         d[o + 1] = Math.min(255, c[1] * k);
         d[o + 2] = Math.min(255, c[2] * k);
+        /* 区域分界线（⑤）：比较本像素覆盖区左右/上下边缘，跨越区域且两侧皆陆才画（海岸不勾边） */
+        if (rm) {
+          const rj = wy * N + x2, di = y2 * N + wx;
+          const eR = rm[i] !== rm[rj] && ts[i] !== 5 && ts[rj] !== 5;
+          const eD = rm[i] !== rm[di] && ts[i] !== 5 && ts[di] !== 5;
+          if (eR || eD) { d[o] *= 0.5; d[o + 1] *= 0.5; d[o + 2] *= 0.5; }
+        }
         d[o + 3] = 255;
       }
     }
@@ -390,18 +474,34 @@
       // 区域名标签（位置随视图变换，字号随"字体大小"设置缩放——阶段二十反馈"地图的字体要放大"；
       // 描边保证任何底色上可读，剔除边界随字号外扩防止大字被裁）
       const F = _fsNow, cull = 36 * F; // 基础字号加大（反馈"地图的显示地面字体大一[点]"：11→15），剔除边界随之外扩
+      /* 阶段二十二（反馈"地图做的不够好"）：区域名防重叠——同纬度标签（营地/海湾小镇）
+         水平投影相撞时往先画者上下错开一档，不再糊成一团 */
+      const labelBoxes = [];
       LG.Config.REGIONS.forEach((rg) => {
         const sx = rg.cx * S - mapV.x0, sy = rg.cy * S - mapV.y0;
         if (sx < -cull || sx > 480 + cull || sy < -cull || sy > 480 + cull) return;
         g.font = 'bold ' + (15 * F) + 'px "LegendKai", sans-serif'; g.textAlign = 'center';
         const name = LG.I18n.lang === 'zh' ? rg.zh : rg.en;
+        const x = sx * z; let y = sy * z;
+        const w = g.measureText(name).width;
+        for (const b of labelBoxes) {
+          if (Math.abs(b.x - x) < (b.w + w) / 2 + 6 * F && Math.abs(b.y - y) < 15 * F) {
+            y = b.y + (y >= b.y ? 16 : -16) * F; break;
+          }
+        }
         g.lineWidth = Math.min(6, 2 + F); g.strokeStyle = 'rgba(0,0,0,0.85)';
-        g.strokeText(name, sx * z, sy * z);
-        g.fillStyle = '#e8d9a8'; g.fillText(name, sx * z, sy * z);
+        g.strokeText(name, x, y);
+        g.fillStyle = '#e8d9a8'; g.fillText(name, x, y);
+        labelBoxes.push({ x, y, w });
       });
-      // 玩家位置
-      g.fillStyle = '#ff5050';
-      g.fillRect((LG.Player.x * S - mapV.x0) * z - 3, (LG.Player.y * S - mapV.y0) * z - 3, 6, 6);
+      // 玩家位置（黑边方块：金字/地形上都醒目）
+      {
+        const ppx = (LG.Player.x * S - mapV.x0) * z, ppy = (LG.Player.y * S - mapV.y0) * z;
+        g.lineWidth = 2; g.strokeStyle = 'rgba(0,0,0,0.9)';
+        g.strokeRect(ppx - 4, ppy - 4, 8, 8);
+        g.fillStyle = '#ff5050';
+        g.fillRect(ppx - 3, ppy - 3, 6, 6);
+      }
       // 联机队友青点+名字（2026-10-14 反馈"玩家容易走散"：大地图看到彼此，找得到人）
       g.textAlign = 'center';
       g.font = (13 * F) + 'px "LegendKai", sans-serif'; // 队友名随字体设置缩放（基础 10→13，同上反馈）
@@ -410,6 +510,8 @@
         if (!pr || pr.x == null) return;
         const fx = (pr.x * S - mapV.x0) * z, fy = (pr.y * S - mapV.y0) * z;
         if (fx < -24 * F || fx > 480 + 24 * F || fy < -24 * F || fy > 480 + 24 * F) return;
+        g.lineWidth = 2; g.strokeStyle = 'rgba(0,0,0,0.9)';
+        g.strokeRect(fx - 4, fy - 4, 8, 8);
         g.fillStyle = '#6cf';
         g.fillRect(fx - 3, fy - 3, 6, 6);
         g.lineWidth = 2; g.strokeStyle = 'rgba(0,0,0,0.8)';

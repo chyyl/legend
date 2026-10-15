@@ -54,14 +54,16 @@
 
   /* 强化（Q35）：消耗银币，等级+1（上限10），每级+5%基础属性
      阶段二十：首选参数改为物品对象本身——旧版传 _id 会与背包下标撞号
-     （行囊 i 位为空时会误强化 _id===i 的已装备物品）；数字参数仍按下标/编号兼容 */
+     （行囊 i 位为空时会误强化 _id===i 的已装备物品）；数字参数仍按下标/编号兼容。
+     阶段二十二（反馈"无法强化无效"）：费用抽出 enhanceCost 供详情卡按钮标价显示。 */
+  function enhanceCost(it) { return 50 * it.lv; } // 越高级越贵
   function enhance(ref) {
     const it = (ref && typeof ref === 'object') ? ref
       : (typeof ref === 'number' && state.bag[ref]) ||
         (typeof ref === 'number' && Object.values(state.equip).find((e) => e && e._id === ref));
     if (!it) return false;
     if (it.lv >= LG.Config.MAX_LEVEL) return false;
-    const cost = 50 * it.lv; // 越高级越贵
+    const cost = enhanceCost(it);
     if (state.silver < cost) return false;
     state.silver -= cost;
     it.lv += 1;
@@ -118,7 +120,8 @@
       const enh = 1 + LG.Config.ENHANCE_PER_LV * (it.lv - 1);
       if (it.slot === 'weapon') {
         s.dmg += it.stats.dmg * enh;
-        s.aspd += it.stats.aspd; s.crit += it.stats.crit;
+        // 阶段二十二（反馈"强化无效"）：攻速也纳入强化加成（每级+5%），强化收益从单一攻击词条变全面可感
+        s.aspd += it.stats.aspd * enh; s.crit += it.stats.crit;
         // 射程由主手武器直接决定（覆盖基础1，不做叠加——物品 range 已含武器基础值+品质词条；
         // 盾/异常的0保留空手基础1）。阶段十七接入，替代旧"固定1格×PLAYER_RANGE_MULT(2)"
         if (it.stats.range) s.range = it.stats.range;
@@ -142,7 +145,7 @@
   }
 
   LG.Inv = {
-    state, add, removeAt, equipItem, unequip, enhance, sell, dismantleAll, priceOf, activeBonds, calcStats,
+    state, add, removeAt, equipItem, unequip, enhance, enhanceCost, sell, dismantleAll, priceOf, activeBonds, calcStats,
     get bag() { return state.bag; },
     get equip() { return state.equip; },
     get silver() { return state.silver; },
