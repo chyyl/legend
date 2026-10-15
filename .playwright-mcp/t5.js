@@ -84,19 +84,24 @@ async (page) => {
   await p.screenshot({ path: S + 't5-joy-tap.png' });
 
   /* ===== ② 大地图单指轻点传送 ===== */
-  // 目标取离营地最远的区域中心（z=1、x0=0 时画布分数 = cx*S/480），区域中心必可走
+  // 阶段二十（字体默认3倍）：横屏 fs3 下画布 540 视觉高、屏仅 390，中点已出屏；
+  // 叠加宿主显示缩放 110% 的 CDP 坐标 ×1.1 换算，仅画布顶部 ~17% 带内触点仍落屏。
+  // 目标改为在该安全带内搜索「原始点与×1.1落点均可走、且距玩家>60格」的世界点（语义不变：点地图传送）
   await p.evaluate(() => LG.UI.togglePage('map', LG.UI.renderMap));
   await p.waitForSelector('#bigmap', { timeout: 5000 });
   const target = await p.evaluate(() => {
-    const camp = LG.Config.REGIONS.find((r) => r.id === 'camp');
-    const pool = LG.Config.REGIONS.filter((r) => r.id !== 'camp');
-    let best = pool[0], bd = -1;
-    for (const r of pool) {
-      const d = Math.hypot(r.cx - camp.cx, r.cy - camp.cy);
-      if (d > bd) { bd = d; best = r; }
+    const P = LG.Player, N = LG.Config.SIZE;
+    const r = document.querySelector('#bigmap').getBoundingClientRect();
+    let best = null;
+    for (let fy = 0.06; fy <= 0.17 && !best; fy += 0.01) {
+      for (let fx = 0.1; fx <= 0.85; fx += 0.05) {
+        const landY = fy * 1.1 + (r.y * 0.1) / r.height, landX = fx * 1.1 + (r.x * 0.1) / r.width;
+        const ok = [[fx * N, fy * N], [landX * N, landY * N]].every(([wx, wy]) =>
+          LG.Terrain.passableBox(wx | 0, wy | 0) && !LG.Terrain.isWater(wx | 0, wy | 0));
+        if (ok && Math.hypot(fx * N - P.x, fy * N - P.y) > 60) { best = { fx, fy }; break; }
+      }
     }
-    const S2 = 480 / LG.Config.SIZE;
-    return { id: best.id, fx: (best.cx * S2) / 480, fy: (best.cy * S2) / 480 };
+    return best || { fx: 0.5, fy: 0.1 };
   });
   const box = await p.locator('#bigmap').boundingBox();
   const pre = await p.evaluate(() => ({ x: LG.Player.x, y: LG.Player.y }));
@@ -108,12 +113,13 @@ async (page) => {
     moved: +Math.hypot(LG.Player.x - q.x, LG.Player.y - q.y).toFixed(1),
     panelClosed: !document.querySelector('#bigmap'),
   }), pre);
-  out.mapTap.target = target.id;
+  out.mapTap.target = { fx: +target.fx.toFixed(2), fy: +target.fy.toFixed(2) };
 
   /* ===== ③ 拖拽平移不传送 + 长按不传送 ===== */
   await p.evaluate(() => LG.UI.togglePage('map', LG.UI.renderMap));
   await p.waitForSelector('#bigmap', { timeout: 5000 });
-  const cx = box.x + box.width / 2, cy = box.y + box.height / 2;
+  // 拖拽/长按交互点同取顶部安全带（×1.1 后仍落屏落画布；中点出屏会让断言空过失去意义）
+  const cx = box.x + box.width * 0.3, cy = box.y + box.height * 0.1;
   const pre2 = await p.evaluate(() => ({ x: LG.Player.x, y: LG.Player.y }));
   await send('touchStart', [T(8, cx, cy)]);
   for (let i = 1; i <= 5; i++) { await send('touchMove', [T(8, cx + i * 18, cy)]); await p.waitForTimeout(20); }

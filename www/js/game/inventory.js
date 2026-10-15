@@ -8,8 +8,8 @@
      .bag[] .equip{weapon,helm,chest,legs,boots} .silver
      .add(item) -> bool      .removeAt(i) .moveTo(i)
      .equipItem(i) .unequip(slot)
-     .enhance(i) -> bool     消耗银币强化
-     .sell(i) -> silver
+     .enhance(itOrRef) -> bool  强化（首选物品对象，兼容下标/编号）
+     .sell(i) -> silver  .dismantleAll() -> {count, silver}(一键分解行囊)
      .calcStats() -> {dmg,aspd,range,crit,def,spd,dodge,dmgMul,defMul,expMul,...}
      .activeBonds() -> [bondId...]   聚合当前所有已装备羁绊（去重 Q29）
 
@@ -52,9 +52,13 @@
     return false; // 背包满
   }
 
-  /* 强化（Q35）：消耗银币，等级+1（上限10），每级+5%基础属性 */
-  function enhance(i) {
-    const it = state.bag[i] || Object.values(state.equip).find((e) => e && e._id === i);
+  /* 强化（Q35）：消耗银币，等级+1（上限10），每级+5%基础属性
+     阶段二十：首选参数改为物品对象本身——旧版传 _id 会与背包下标撞号
+     （行囊 i 位为空时会误强化 _id===i 的已装备物品）；数字参数仍按下标/编号兼容 */
+  function enhance(ref) {
+    const it = (ref && typeof ref === 'object') ? ref
+      : (typeof ref === 'number' && state.bag[ref]) ||
+        (typeof ref === 'number' && Object.values(state.equip).find((e) => e && e._id === ref));
     if (!it) return false;
     if (it.lv >= LG.Config.MAX_LEVEL) return false;
     const cost = 50 * it.lv; // 越高级越贵
@@ -64,13 +68,30 @@
     return true;
   }
 
+  /* 品质售价表（出售/一键分解共用，阶段二十抽出） */
+  const PRICE = { N: 10, R: 30, SR: 80, SSR: 200, D: 5, C: 15, B: 40, A: 100, S: 250, SS: 600 };
+  function priceOf(it) { return (PRICE[it.quality] || 10) * it.lv; }
+
   function sell(i) {
     const it = removeAt(i);
     if (!it) return 0;
-    const price = ({ N: 10, R: 30, SR: 80, SSR: 200, D: 5, C: 15, B: 40, A: 100, S: 250, SS: 600 })[it.quality] || 10;
-    const gain = price * it.lv;
+    const gain = priceOf(it);
     state.silver += gain;
     return gain;
+  }
+
+  /* 一键分解（阶段二十反馈"添加一键分解功能"）：分解行囊内全部物品
+     （已装备槽不受影响），按售价表折算银币。返回 {count, silver} 供 UI 提示。 */
+  function dismantleAll() {
+    let count = 0, silver = 0;
+    for (let i = 0; i < state.bag.length; i++) {
+      const it = state.bag[i];
+      if (!it) continue;
+      silver += priceOf(it); count++;
+      state.bag[i] = null;
+    }
+    state.silver += silver;
+    return { count, silver };
   }
 
   /* 聚合当前所有已装备羁绊：Q29 同类不叠加，只保留唯一一份 */
@@ -121,7 +142,7 @@
   }
 
   LG.Inv = {
-    state, add, removeAt, equipItem, unequip, enhance, sell, activeBonds, calcStats,
+    state, add, removeAt, equipItem, unequip, enhance, sell, dismantleAll, priceOf, activeBonds, calcStats,
     get bag() { return state.bag; },
     get equip() { return state.equip; },
     get silver() { return state.silver; },

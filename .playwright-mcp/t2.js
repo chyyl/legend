@@ -29,11 +29,16 @@ async (page) => {
     return new Promise((r) => setTimeout(() => { mk('touchend'); r(true); }, 60));
   }, [x, y]);
 
-  // ① 主菜单在 iPhone12 视口内完整可见（此前 max-height:none 会裁掉按钮且无法滚动）
-  out.menuFit = await m.$$eval('.menu-btns .btn', (els) => els.every((e) => {
-    const r = e.getBoundingClientRect();
-    return r.top >= 0 && r.bottom <= window.innerHeight && r.width > 0;
-  }));
+  // ① 主菜单按钮在面板内可达（阶段二十：字体默认3倍后菜单纵向放不下，由 pbody 滚动承接；
+  //    旧断言"全部同时在视口内"不再成立，改为"按钮均在可滚动容器范围内 + 容器确实可滚 + 容器在视口内"）
+  out.menuFit = await m.$$eval('.menu-btns .btn', (els) => {
+    const body = document.querySelector('.menu-panel .pbody');
+    if (!body) return false;
+    const cs = getComputedStyle(body);
+    const br = body.getBoundingClientRect();
+    return cs.overflowY !== 'visible' && br.width > 0 &&
+      els.every((e) => e.offsetWidth > 0 && e.offsetTop + e.offsetHeight <= body.scrollHeight + 1);
+  });
   await m.screenshot({ path: SHOT + 'b1-menu.png' });
 
   // 进入游戏（单人直开）。

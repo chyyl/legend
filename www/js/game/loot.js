@@ -12,7 +12,8 @@
 
    装备实例结构（供 inventory/ui 渲染）：
      { slot:'weapon'|'armor', weaponId?, armorSlot?, quality, lv:1,
-       stats:{dmg,aspd,range,crit,def,spd,dodge}, bonds:[bondId...], _id }
+       stats:{dmg,aspd,range,crit,def,spd,dodge}, bonds:[bondId...],
+        prefix?:{zh,en}(武器专属，随机前缀词池), _id }
 
    依赖：core/config.js（品质表/羁绊表/公式）、core/utils.js。
    ========================================================================== */
@@ -52,8 +53,10 @@
       crit: q.crit ? LG.U.range(q.crit) : 0,
     };
     const nb = LG.U.randInt(q.bonds[0], q.bonds[1]);
+    // 阶段二十：每件武器随机前缀（反馈"最好每一个武器都有前缀名字"），展示为「前缀·基础名」
+    const prefix = LG.U.pick(LG.Config.WEAPON_PREFIXES);
     return { slot: 'weapon', weaponId: base.id, kind: base.kind, quality: q.id, lv,
-             stats, bonds: rollBonds(nb), _id: ++uid };
+             stats, bonds: rollBonds(nb), prefix, _id: ++uid };
   }
 
   /* ---------- 装备实例（四槽位之一） ---------- */

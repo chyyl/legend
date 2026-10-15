@@ -67,6 +67,20 @@
       { id: 'shield',    kind: 'shield', zh: '盾',     en: 'Shield',       base: 0,  range: 0,   aspd: 1.0, color: '#6b7280' },
     ],
 
+    /* ---------- 武器前缀词池（阶段二十反馈"每个武器都有前缀名字"）----------
+       loot.rollWeapon 生成武器时随机抽一个，展示为「前缀·基础名」（如：血噬·骑士剑）。
+       纯原创中文词 + 对应英文；存档序列化安全（纯数据对象）。 */
+    WEAPON_PREFIXES: [
+      { zh: '残暴', en: 'Savage' },    { zh: '苍狼', en: 'Grey Wolf' },
+      { zh: '血噬', en: 'Bloodrend' }, { zh: '黯影', en: 'Dusk' },
+      { zh: '雷霆', en: 'Thunder' },   { zh: '冰棘', en: 'Frostbarb' },
+      { zh: '焚日', en: 'Sunbrand' },  { zh: '荆棘', en: 'Bramble' },
+      { zh: '破晓', en: 'Daybreak' },  { zh: '流浪', en: 'Wandering' },
+      { zh: '王国', en: 'Royal' },     { zh: '禁断', en: 'Forbidden' },
+      { zh: '碎星', en: 'Starfall' },  { zh: '古墓', en: 'Ancient' },
+      { zh: '铁壁', en: 'Ironwall' },  { zh: '猎风', en: 'Windhunt' },
+    ],
+
     /* ---------- 装备槽位（文档：头盔/护甲/护腿/鞋） ---------- */
     ARMOR_SLOTS: [
       { id: 'helm', zh: '头盔', en: 'Helm' },

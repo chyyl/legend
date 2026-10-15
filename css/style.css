@@ -41,6 +41,9 @@
   --txt: #e8e2d0;           /* 正文（楷体米白） */
   --muted: #9a8f70;         /* 次级文字 */
   --shadow: rgba(0, 0, 0, .55);
+  /* 阶段二十·字体大小：#overlay 子元素 zoom 放大时，视口类尺寸(92vw/86vh…)乘此反比系数补偿，
+     保证放大后仍贴合屏幕。默认 .33333 = 字体 3 倍（ui.js applyFontScale 每次覆盖写入） */
+  --fs-inv: .33333;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -111,7 +114,7 @@ html, body {
 /* ===== 通用面板：四角金饰 + 铭牌标题栏 + 硬像素投影 ===== */
 .panel {
   position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
-  min-width: 320px; max-width: 92vw; max-height: 86vh; overflow: hidden;
+  min-width: 320px; max-width: calc(92vw * var(--fs-inv)); max-height: calc(86vh * var(--fs-inv)); overflow: hidden;
   background: linear-gradient(180deg, var(--pnl-hi) 0, var(--pnl) 56px, var(--pnl-lo) 100%);
   border: 2px solid #000;
   box-shadow:
@@ -136,8 +139,8 @@ html, body {
    底部裁掉——裁剪区外的触点命中的是底层游戏画布，传送点了没反应（阶段十七修复）。
    面板放宽到 96vh，画布按可用高度收敛（标题 69 + 缩放行 34 + 提示 24 + 边框 ≈140）。 */
 @media (max-height: 560px) {
-  .panel { max-height: 96vh; overflow: auto; }
-  #bigmap { width: calc(96vh - 140px); max-width: 100%; }
+  .panel { max-height: calc(96vh * var(--fs-inv)); overflow: auto; }
+  #bigmap { width: max(180px, calc(96vh * var(--fs-inv) - 140px)); max-width: 100%; }
 }
 /* 四角 L 形金饰（多层渐变定位，Android WebView 可用） */
 .panel::before {
@@ -184,7 +187,7 @@ html, body {
 .panel .pbody {
   position: relative; z-index: 1;
   padding: 16px 18px 18px;
-  max-height: calc(86vh - 54px);
+  max-height: calc(86vh * var(--fs-inv) - 54px);
   overflow-y: auto; overflow-x: hidden;
 }
 .panel .pbody::-webkit-scrollbar { width: 8px; }
@@ -192,9 +195,9 @@ html, body {
 .panel .pbody::-webkit-scrollbar-thumb { background: linear-gradient(180deg, var(--gold-lo), var(--gold-deep)); border: 1px solid #000; }
 
 /* ===== 主菜单（engine.showMenu）：标题画面感 ===== */
-.menu-panel { min-width: min(430px, 92vw); }
+.menu-panel { min-width: min(430px, calc(92vw * var(--fs-inv))); }
 .menu-panel h2, .menu-panel .close-x { display: none; }
-.menu-panel .pbody { max-height: calc(86vh - 24px); overflow-y: auto; padding: 34px 34px 22px; text-align: center; }
+.menu-panel .pbody { max-height: calc(86vh * var(--fs-inv) - 24px); overflow-y: auto; padding: 34px 34px 22px; text-align: center; }
 .menu-logo { margin-bottom: 6px; }
 .menu-logo::before {
   content: ''; display: block; width: 15px; height: 15px; margin: 0 auto 20px;
@@ -321,7 +324,7 @@ html, body {
 .slot[data-q="S"],  .slot[data-q="SS"] { --q: #ef4444; --qg: rgba(239, 68, 68, .38); }
 
 /* ===== 背包布局：左装备列（带槽位标签）+ 右行囊网格 + 详情卡 ===== */
-.panel-bag { width: min(640px, 94vw); } /* 两栏收敛宽度（否则 auto-fill 网格只算 1 列） */
+.panel-bag { width: min(640px, calc(94vw * var(--fs-inv))); } /* 两栏收敛宽度（否则 auto-fill 网格只算 1 列） */
 .bag-wrap { display: flex; flex-direction: column; }
 .eq-col {
   display: flex; flex-wrap: wrap; justify-content: center;
@@ -331,16 +334,27 @@ html, body {
 .eq-row .slot { width: 48px; height: 48px; margin: 0; }
 .slot-tag { margin-top: 4px; font-size: 12px; color: var(--muted); letter-spacing: 2px; }
 .bag-right { min-width: 0; }
-.bag-cap { font-size: 12px; color: var(--gold); letter-spacing: 2px; margin-bottom: 6px; text-align: right; }
+.bag-cap {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 12px; color: var(--gold); letter-spacing: 2px; margin-bottom: 6px;
+}
 .bag-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(46px, 1fr)); gap: 6px; }
 .bag-grid .slot { width: auto; height: auto; aspect-ratio: 1; margin: 0; }
 .item-card {
+  position: sticky; bottom: 0; z-index: 3; /* 阶段二十：详情卡吸底常驻（反馈"按钮找不到（在背包界面底部）"） */
   margin-top: 10px; min-height: 46px; padding: 9px 12px;
   background: linear-gradient(180deg, #14171f, #10131a);
   border: 1px solid #2a2f3d; border-left: 3px solid var(--gold-lo);
   font-size: 14px; line-height: 1.7;
 }
 .item-card b { letter-spacing: 1px; }
+/* 阶段二十：详情卡内部排版（前缀名标题 + 数值行 + 羁绊 + 按钮排） */
+.ic-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 2px; }
+.ic-meta { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.ic-stats { display: flex; flex-wrap: wrap; gap: 0 14px; color: var(--muted); }
+.ic-stats b { color: var(--txt); }
+.ic-bonds { color: var(--gold-lo); font-size: 12px; margin: 2px 0 4px; }
+.ic-btns { display: flex; flex-wrap: wrap; }
 #shop-items { display: flex; flex-wrap: wrap; justify-content: center; }
 @media (min-width: 760px) {
   .bag-wrap { flex-direction: row; align-items: flex-start; }
@@ -370,7 +384,7 @@ html, body {
 /* ===== NPC 对话框：底部铭牌框（说话人金条 + 箱体） ===== */
 .dialog {
   position: absolute; left: 50%; bottom: 5%; transform: translateX(-50%);
-  width: min(760px, 94vw);
+  width: min(760px, calc(94vw * var(--fs-inv)));
   background: linear-gradient(180deg, #191d28, #14171f);
   border: 2px solid #000;
   box-shadow:
@@ -498,8 +512,8 @@ select.inp { cursor: pointer; }
 /* ===== 横屏小屏（手机）下压缩面板（反馈"UI太大显示不全，建议缩小50%"：
      面板排版/字号压缩，触控热区仍保持 ≥44px） ===== */
 @media (max-width: 720px) {
-  .panel { min-width: 0; width: 94vw; }
-  .panel-bag { width: 94vw; }
+  .panel { min-width: 0; width: calc(94vw * var(--fs-inv)); }
+  .panel-bag { width: calc(94vw * var(--fs-inv)); }
   .panel h2 { font-size: 16px; letter-spacing: 4px; padding: 10px 42px 9px; }
   .panel .pbody { padding: 11px 12px 13px; }
   .btn { min-width: 86px; font-size: 14.5px; padding: 0 12px; letter-spacing: 1px; }
@@ -520,7 +534,7 @@ select.inp { cursor: pointer; }
 }
 
 /* ===== 更新日志页（阶段十九；数据源 LG.CHANGELOG，sync 从 CHANGELOG.md 生成） ===== */
-.cl-wrap { max-height: 52vh; overflow-y: auto; text-align: left; font-size: 13px; line-height: 1.6; padding-right: 4px; }
+.cl-wrap { max-height: calc(52vh * var(--fs-inv)); overflow-y: auto; text-align: left; font-size: 13px; line-height: 1.6; padding-right: 4px; }
 .cl-ver { margin: 10px 0 2px; }
 .cl-ver b { color: #d8b45a; font-size: 15px; margin-right: 8px; }
 .cl-ver .cl-date { color: #8a8f9e; font-size: 11px; }

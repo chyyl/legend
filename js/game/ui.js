@@ -24,8 +24,29 @@
   function init(cv) {
     canvas = cv;
     overlay = document.getElementById('overlay');
+    applyFontScale(LG.U.LS.get('fontScale', 3)); // 字体大小（阶段二十）：默认3倍，设置页可调
     bindBus();
   }
+
+  /* ---------- 字体大小（阶段二十反馈"字体放大3倍，添加字体大小"） ----------
+     实现：#overlay 直接子元素（面板/菜单/对话框/toast）整体 zoom 等比放大，
+     内部设计比例不变；视口类尺寸（92vw/86vh 等）经 --fs-inv 反比补偿，
+     保证放大后仍贴合屏幕（calc 内乘 var() 兼容性最稳，zoom 挂子元素保居中已实测）。 */
+  let _fsStyle = null;
+  let _fsNow = 3; // 当前倍率缓存（canvas 文字——大地图区域名/队友名——每帧取用，避免读 LS）
+  function applyFontScale(v) {
+    v = Math.min(3, Math.max(1, +v || 3));
+    _fsNow = v;
+    LG.U.LS.set('fontScale', v);
+    document.documentElement.style.setProperty('--fs-inv', String(1 / v));
+    if (_fsStyle) _fsStyle.textContent = '#overlay > * { zoom: ' + v + '; }';
+    return v;
+  }
+  (function injectFontStyle() {
+    _fsStyle = document.createElement('style');
+    _fsStyle.id = 'fs-scale';
+    document.head.appendChild(_fsStyle);
+  })();
 
   /* ---------- 事件订阅：让其它模块能触发 UI ---------- */
   function bindBus() {
@@ -101,25 +122,29 @@
     eq += '</div>';
     // 右区：行囊计数 + 40 格网格 + 物品详情卡（替代原先右下空白）
     const used = LG.Inv.bag.filter(Boolean).length;
-    let bag = `<div class="bag-right"><div class="bag-cap">${T()('bag')} ${used}/40</div><div class="bag-grid">`;
+    let bag = `<div class="bag-right"><div class="bag-cap"><span>${T()('bag')} ${used}/40</span>` +
+      `<button class="btn small" id="bag-dismantle">${T()('dismantle')}</button></div><div class="bag-grid">`;
     LG.Inv.bag.forEach((it, i) => {
       bag += `<div class="slot" data-q="${it ? it.quality : ''}" data-bag="${i}">`;
       if (it) bag += `<canvas width="32" height="32"></canvas><span class="lv">${it.lv}</span>`;
       bag += `</div>`;
     });
-    bag += '</div><div id="item-info" class="item-card"></div></div>';
-    body.innerHTML = `<div class="bag-wrap">${eq}${bag}</div>`;
+    bag += '</div></div>';
+    // 详情卡挂 .pbody 直下（配合 sticky 吸底）：留在 .bag-right（flex 子项）内时 sticky 只能在
+    // 父项内容盒内偏移，父项底部与卡片齐平 → 无吸底空间，滚动即被裁出视口（t8 stickyOk 实测）
+    body.innerHTML = `<div class="bag-wrap">${eq}${bag}</div><div id="item-info" class="item-card"></div>`;
     // 绘制物品图标
     body.querySelectorAll('[data-bag]').forEach((el) => {
       const it = LG.Inv.bag[+el.dataset.bag];
       if (it) drawItemIcon(el.querySelector('canvas'), it);
-      el.onclick = () => itemMenu(+el.dataset.bag, it);
+      el.onclick = () => { if (it) itemDetail(it, { bag: +el.dataset.bag }); }; // 阶段二十：查看详情卡（不再行内直接操作）
     });
     body.querySelectorAll('[data-eqslot]').forEach((el) => {
       const it = LG.Inv.equip[el.dataset.eqslot];
       if (it) drawItemIcon(el.querySelector('canvas'), it);
-      el.onclick = () => { if (it && LG.Inv.unequip(el.dataset.eqslot)) { renderBag(); } };
+      el.onclick = () => { if (it) itemDetail(it, { eq: el.dataset.eqslot }); }; // 阶段二十：查看已装备详情（卸下移入详情卡按钮）
     });
+    bindDismantle(body);
     return p; // 供 togglePage 识别页面（B键再按关闭）
   }
   function drawItemIcon(cv, it) {
@@ -128,20 +153,87 @@
                                      : LG.Assets.armorIcon(it.armorSlot);
     g.drawImage(img, 0, 0, 32, 32);
   }
-  function itemMenu(i, it) {
-    if (!it) return;
+  /* 物品展示名（阶段二十）：武器=「前缀·基础名」（随机前缀词池），防具=槽位名 */
+  function itemTitle(it) {
+    const zh = LG.I18n.lang === 'zh';
+    if (it.slot === 'weapon') {
+      const w = LG.Config.WEAPONS.find((x) => x.id === it.weaponId) || {};
+      const base = zh ? (w.zh || it.weaponId) : (w.en || it.weaponId);
+      const pre = it.prefix ? (zh ? it.prefix.zh : it.prefix.en) + '·' : '';
+      return pre + base;
+    }
+    const sl = LG.Config.ARMOR_SLOTS.find((x) => x.id === it.armorSlot) || {};
+    return zh ? (sl.zh || it.armorSlot) : (sl.en || it.armorSlot);
+  }
+
+  /* 物品详情卡（阶段二十重做，反馈"不能查看装备武器详情，装备和强化按钮找不到"）：
+     全量数值 + 前缀名标题 + 品质 + 羁绊 + 操作按钮。
+     src：{bag:i}=行囊物品（装备/强化/出售）| {eq:slot}=已装备物品（卸下/强化）。 */
+  function itemDetail(it, src) {
     const info = document.getElementById('item-info');
+    if (!info || !it) return;
+    const zh = LG.I18n.lang === 'zh';
     const bonds = it.bonds.map((b) => { const bd = LG.Config.BONDS.find(x => x.id === b); return bd ? (bd.zh || bd.en) : b; }).join(', ') || T()('no_bond');
-    info.innerHTML = `<div><b class="q-${it.quality}">${it.quality}</b> Lv${it.lv} [${bonds}]</div>
-      <button class="btn small" data-a="eq">${T()('equip')}</button>
-      <button class="btn small" data-a="enh">${T()('enhance')}</button>
-      <button class="btn small" data-a="sell">${T()('sell')}</button>`;
-    info.querySelector('[data-a=eq]').onclick = () => { LG.Inv.equipItem(i); renderBag(); };
-    info.querySelector('[data-a=enh]').onclick = () => {
-      if (LG.Inv.enhance(it._id)) { toast('强化成功 Lv' + it.lv); renderBag(); }
-      else toast('银币不足或已满级');
+    let statRow;
+    if (it.slot === 'weapon') {
+      statRow = `<span>${T()('atk')} <b>${it.stats.dmg}</b></span>
+        <span>${T()('aspd')} <b>+${(it.stats.aspd || 0).toFixed(2)}</b></span>
+        <span>${T()('range')} <b>${(it.stats.range || 1).toFixed(1)}</b></span>
+        <span>${T()('crit')} <b>+${Math.round((it.stats.crit || 0) * 100)}%</b></span>`;
+    } else {
+      statRow = `<span>${T()('def')} <b>${it.stats.def || 0}</b></span>
+        <span>${T()('atk')} <b>${it.stats.dmg || 0}</b></span>
+        <span>${T()('move_speed')} <b>+${it.stats.spd || 0}</b></span>
+        <span>${T()('dodge')} <b>+${it.stats.dodge || 0}</b></span>`;
+    }
+    const btns = src && src.eq
+      ? `<button class="btn small" data-a="uneq">${T()('unequip')}</button>
+         <button class="btn small" data-a="enh">${T()('enhance')}</button>`
+      : `<button class="btn small" data-a="eq">${T()('equip')}</button>
+         <button class="btn small" data-a="enh">${T()('enhance')}</button>
+         <button class="btn small" data-a="sell">${T()('sell')}</button>`;
+    info.innerHTML = `<div class="ic-head"><b class="q-${it.quality}">${itemTitle(it)}</b>
+        <span class="ic-meta"><b class="q-${it.quality}">${it.quality}</b> Lv${it.lv}</span></div>
+      <div class="ic-stats">${statRow}</div><div class="ic-bonds">[${bonds}]</div>
+      <div class="ic-btns">${btns}</div>`;
+    const eqB = info.querySelector('[data-a=eq]');
+    if (eqB) eqB.onclick = () => {
+      const old = LG.Inv.equipItem(src.bag);
+      renderBag();
+      if (old) itemDetail(old, { bag: LG.Inv.bag.indexOf(old) }); // 详情跟到换下来的旧装备
     };
-    info.querySelector('[data-a=sell]').onclick = () => { const g = LG.Inv.sell(i); toast('+' + g + ' 银'); renderBag(); };
+    const unB = info.querySelector('[data-a=uneq]');
+    if (unB) unB.onclick = () => {
+      if (LG.Inv.unequip(src.eq)) { renderBag(); itemDetail(it, { bag: LG.Inv.bag.indexOf(it) }); }
+      else toast(zh ? '背包已满' : 'Bag full');
+    };
+    const enB = info.querySelector('[data-a=enh]');
+    if (enB) enB.onclick = () => {
+      if (LG.Inv.enhance(it)) { toast((zh ? '强化成功 ' : 'Enhanced ') + 'Lv' + it.lv); renderBag(); itemDetail(it, src); }
+      else toast(zh ? '银币不足或已满级' : 'Not enough silver or max level');
+    };
+    const seB = info.querySelector('[data-a=sell]');
+    if (seB) seB.onclick = () => { const g = LG.Inv.sell(src.bag); toast('+' + g + ' ' + T()('silver_s')); renderBag(); };
+  }
+
+  /* 一键分解（阶段二十反馈"添加一键分解功能"）：两段式确认防误触——
+     首次点击武装为"确认分解？"（3 秒内再点执行），分解行囊全部物品折银。 */
+  function bindDismantle(body) {
+    const db = body.querySelector('#bag-dismantle');
+    if (!db) return;
+    let armed = 0;
+    const reset = () => { armed = 0; db.classList.remove('primary'); db.textContent = T()('dismantle'); };
+    db.onclick = () => {
+      if (!armed) {
+        armed = 1; db.classList.add('primary'); db.textContent = T()('dismantle_confirm');
+        setTimeout(reset, 3000);
+        return;
+      }
+      const r = LG.Inv.dismantleAll();
+      reset();
+      if (r.count) toast(T()('dismantle_done', r.count, r.silver));
+      renderBag();
+    };
   }
 
   /* ---------- 属性页 ---------- */
@@ -287,13 +379,15 @@
       g.clearRect(0, 0, 480, 480);
       g.imageSmoothingEnabled = false;
       g.drawImage(base, mapV.x0, mapV.y0, span, span, 0, 0, 480, 480);
-      // 区域名标签（位置随视图变换，字号恒定保证放大后仍可读；描边保证任何底色上可读）
+      // 区域名标签（位置随视图变换，字号随"字体大小"设置缩放——阶段二十反馈"地图的字体要放大"；
+      // 描边保证任何底色上可读，剔除边界随字号外扩防止大字被裁）
+      const F = _fsNow, cull = 30 * F;
       LG.Config.REGIONS.forEach((rg) => {
         const sx = rg.cx * S - mapV.x0, sy = rg.cy * S - mapV.y0;
-        if (sx < -30 || sx > 480 + 30 || sy < -30 || sy > 480 + 30) return;
-        g.font = 'bold 11px "LegendKai", sans-serif'; g.textAlign = 'center';
+        if (sx < -cull || sx > 480 + cull || sy < -cull || sy > 480 + cull) return;
+        g.font = 'bold ' + (11 * F) + 'px "LegendKai", sans-serif'; g.textAlign = 'center';
         const name = LG.I18n.lang === 'zh' ? rg.zh : rg.en;
-        g.lineWidth = 3; g.strokeStyle = 'rgba(0,0,0,0.85)';
+        g.lineWidth = Math.min(6, 2 + F); g.strokeStyle = 'rgba(0,0,0,0.85)';
         g.strokeText(name, sx * z, sy * z);
         g.fillStyle = '#e8d9a8'; g.fillText(name, sx * z, sy * z);
       });
@@ -302,18 +396,18 @@
       g.fillRect((LG.Player.x * S - mapV.x0) * z - 3, (LG.Player.y * S - mapV.y0) * z - 3, 6, 6);
       // 联机队友青点+名字（2026-10-14 反馈"玩家容易走散"：大地图看到彼此，找得到人）
       g.textAlign = 'center';
-      g.font = '10px "LegendKai", sans-serif';
+      g.font = (10 * F) + 'px "LegendKai", sans-serif'; // 队友名随字体设置缩放（同上反馈）
       Object.keys(LG.Net.peers || {}).forEach((id) => {
         const pr = LG.Net.peers[id];
         if (!pr || pr.x == null) return;
         const fx = (pr.x * S - mapV.x0) * z, fy = (pr.y * S - mapV.y0) * z;
-        if (fx < -20 || fx > 500 || fy < -20 || fy > 500) return;
+        if (fx < -20 * F || fx > 480 + 20 * F || fy < -20 * F || fy > 480 + 20 * F) return;
         g.fillStyle = '#6cf';
         g.fillRect(fx - 3, fy - 3, 6, 6);
         g.lineWidth = 2; g.strokeStyle = 'rgba(0,0,0,0.8)';
-        g.strokeText(pr.name || '队友', fx, fy + 14);
+        g.strokeText(pr.name || '队友', fx, fy + 14 * F);
         g.fillStyle = '#aee6ff';
-        g.fillText(pr.name || '队友', fx, fy + 14);
+        g.fillText(pr.name || '队友', fx, fy + 14 * F);
       });
       const zb = p.querySelector('#bm-zoom'); if (zb) zb.textContent = mapV.z.toFixed(1) + '×';
     }
@@ -415,6 +509,7 @@
       <div class="slider-row"><label>${T()('music')}</label><input type="range" id="s-music" min="0" max="1" step="0.05" value="${vol.music}"></div>
       <div class="slider-row"><label>${T()('sfx')}</label><input type="range" id="s-sfx" min="0" max="1" step="0.05" value="${vol.sfx}"></div>
       <div class="slider-row"><label>${T()('brightness')}</label><input type="range" id="s-bright" min="0.3" max="1.8" step="0.05" value="${bright}"></div>
+      <div class="slider-row"><label>${T()('font_scale')}</label><input type="range" id="s-font" min="1" max="3" step="0.5" value="${LG.U.LS.get('fontScale', 3)}"></div>
       <div class="slider-row"><label>${T()('language')}</label>
         <button class="btn small" id="s-lang">中文 / EN</button></div>
       <div style="text-align:center;margin-top:8px">
@@ -430,6 +525,7 @@
     p.querySelector('#s-music').oninput = (e) => LG.Sound.setVolume(+e.target.value, 'music');
     p.querySelector('#s-sfx').oninput = (e) => LG.Sound.setVolume(+e.target.value, 'sfx');
     p.querySelector('#s-bright').oninput = (e) => setB(+e.target.value);
+    p.querySelector('#s-font').oninput = (e) => applyFontScale(+e.target.value); // 字体大小即时生效（阶段二十）
     p.querySelector('#s-lang').onclick = () => { LG.I18n.set(LG.I18n.lang === 'zh' ? 'en' : 'zh'); closePanel(); LG.U.bus.emit('lang_changed'); };
     p.querySelector('#s-map').onclick = () => renderMap();
     p.querySelector('#s-log').onclick = () => renderChangelog();
@@ -942,5 +1038,6 @@
   }
 
   LG.UI = { init, drawHUD, toast, panel, closePanel, togglePage, renderBag, renderStats, renderQuests,
-    renderMap, renderSettings, renderChangelog, charCreate, dialog, tutorial, drawItemIcon, hudHit, escMenu };
+    renderMap, renderSettings, renderChangelog, charCreate, dialog, tutorial, drawItemIcon, hudHit, escMenu,
+    applyFontScale, itemTitle, get fontScale() { return _fsNow; } };
 })();

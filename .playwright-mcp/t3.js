@@ -113,7 +113,10 @@ async (page) => {
   out.map.zIn = await page.$eval('#bm-zoom', (e) => e.textContent);
 
   const mbox = await page.locator('#bigmap').boundingBox();
-  const mcx = mbox.x + mbox.width / 2, mcy = mbox.y + mbox.height / 2;
+  // 阶段二十（字体默认3倍）：画布放大后中心贴近视口底边，宿主显示缩放110%下 CDP 坐标
+  // ×1.1 会把中心点推出视口 → wheel/拖拽/点击全部落空（面板不关，下文 toggle 变关闭→超时）。
+  // 交互点改取画布左上三分位：×1.1 后仍落在画布与视口内（zoom1 时语义不变）
+  const mcx = mbox.x + mbox.width * 0.3, mcy = mbox.y + mbox.height * 0.3;
   await page.mouse.move(mcx, mcy);
   await page.mouse.wheel(0, -240);
   await page.waitForTimeout(150);
