@@ -27,22 +27,43 @@
     // 字体大小（阶段二十）：**默认 1×**（反馈"默认字体大小1×"）；用户动过滑杆（fontScaleUser 标记）
     // 则保留其选择，旧版落库的 3×/1.5× 默认值无标记时自动回落 1×
     applyFontScale(LG.U.LS.get('fontScaleUser') ? LG.U.LS.get('fontScale', 1) : 1);
+    // UI 大小（阶段二十三清单105"设置支持调节UI大小（一般为屏幕的95%）"）：默认 1（面板≈屏95%）
+    applyUIScale(LG.U.LS.get('uiScaleUser') ? LG.U.LS.get('uiScale', 1) : 1);
+    // 世界最高等级（清单111）：{auto,val} 持久化；默认自动=玩家等级
+    const wlv = LG.U.LS.get('worldLv', null);
+    if (wlv && typeof wlv === 'object') {
+      LG.Config.WORLD_LEVEL.auto = wlv.auto !== false;
+      LG.Config.WORLD_LEVEL.val = +wlv.val || 1;
+    }
     bindBus();
   }
 
-  /* ---------- 字体大小（阶段二十反馈"字体放大3倍，添加字体大小"） ----------
-     实现：#overlay 直接子元素（面板/菜单/对话框/toast）整体 zoom 等比放大，
-     内部设计比例不变；视口类尺寸（92vw/86vh 等）经 --fs-inv 反比补偿，
-     保证放大后仍贴合屏幕（calc 内乘 var() 兼容性最稳，zoom 挂子元素保居中已实测）。 */
+  /* ---------- 字体大小（阶段二十反馈"字体放大3倍，添加字体大小"）+ UI 大小（清单105） ----------
+     实现：#overlay 直接子元素（面板/菜单/对话框/toast）整体 zoom 等比放大（=字体×UI 相乘），
+     内部设计比例不变；视口类尺寸（92vw/86vh 等）经 --fs-inv=1/(字体×UI) 反比补偿，
+     保证放大后仍贴合屏幕（calc 内乘 var() 兼容性最稳，zoom 挂子元素保居中已实测）。
+     UI 大小另乘算 Canvas HUD（drawHUD 的虚拟坐标 U）——HUD 为画布绘制，随 UI 缩放整体变。 */
   let _fsStyle = null;
-  let _fsNow = 3; // 当前倍率缓存（canvas 文字——大地图区域名/队友名——每帧取用，避免读 LS）
+  let _fsNow = 3, _uiNow = 1; // 倍率缓存（canvas 文字/每帧 HUD 取用，避免读 LS）
+  function _applyScale() {
+    const z = _fsNow * _uiNow;
+    document.documentElement.style.setProperty('--fs-inv', String(1 / z));
+    if (_fsStyle) _fsStyle.textContent = '#overlay > * { zoom: ' + z + '; }';
+  }
   function applyFontScale(v, userSet) {
     v = Math.min(3, Math.max(1, +v || 2));
     _fsNow = v;
     LG.U.LS.set('fontScale', v);
     if (userSet) LG.U.LS.set('fontScaleUser', true); // 用户主动调过 → 不再被分端默认覆盖
-    document.documentElement.style.setProperty('--fs-inv', String(1 / v));
-    if (_fsStyle) _fsStyle.textContent = '#overlay > * { zoom: ' + v + '; }';
+    _applyScale();
+    return v;
+  }
+  function applyUIScale(v, userSet) {
+    v = Math.min(1.3, Math.max(0.7, +v || 1));
+    _uiNow = v;
+    LG.U.LS.set('uiScale', v);
+    if (userSet) LG.U.LS.set('uiScaleUser', true);
+    _applyScale();
     return v;
   }
   (function injectFontStyle() {
@@ -178,25 +199,31 @@
     const zh = LG.I18n.lang === 'zh';
     const bonds = it.bonds.map((b) => { const bd = LG.Config.BONDS.find(x => x.id === b); return bd ? (bd.zh || bd.en) : b; }).join(', ') || T()('no_bond');
     /* 词条有效值：与 calcStats 同口径（攻/防/攻速含强化 +5%/级；射程/暴击/移速/闪避不吃强化）
-       ——阶段二十二反馈"无法强化无效"：旧版显示物品原始值，强化后卡面数字纹丝不动 */
+       ——阶段二十二反馈"无法强化无效"：旧版显示物品原始值，强化后卡面数字纹丝不动
+       阶段二十三（反馈"装备数值有0"+清单110"小数点保留3位"）：防御走 defPts 百分点、
+       装备伤害/移速/闪避按百分点显示；此处返回原始数值，格式化统一在 fmt（3 位小数） */
     const valOf = (x, key) => {
       const e = 1 + LG.Config.ENHANCE_PER_LV * (x.lv - 1);
       if (x.slot === 'weapon') {
         if (key === 'dmg') return Math.round(x.stats.dmg * e);
-        if (key === 'aspd') return +((x.stats.aspd || 0) * e).toFixed(2);
-        if (key === 'range') return +(x.stats.range || 1).toFixed(1);
+        if (key === 'aspd') return (x.stats.aspd || 0) * e;
+        if (key === 'range') return x.stats.range || 1;
         return Math.round((x.stats.crit || 0) * 100);
       }
-      if (key === 'def') return Math.round((x.stats.def || 0) * e);
-      if (key === 'dmg') return x.stats.dmg || 0;
-      if (key === 'spd') return x.stats.spd || 0;
-      return x.stats.dodge || 0;
+      if (key === 'def') return Math.round(LG.Inv.defPts(x.stats.def) * e);
+      if (key === 'dmg') return Math.round((x.stats.dmg || 0) * 100);  // 总伤%（百分点）
+      if (key === 'spd') return Math.round((x.stats.spd || 0) * 100);  // 移速%（百分点）
+      return Math.round((x.stats.dodge || 0) * 100);                   // 闪避%（百分点）
     };
     const rows = it.slot === 'weapon'
       ? [['atk', 'dmg'], ['aspd', 'aspd'], ['range', 'range'], ['crit', 'crit']]
       : [['def', 'def'], ['atk', 'dmg'], ['move_speed', 'spd'], ['dodge', 'dodge']];
-    const fmt = (key, v) => (key === 'aspd' ? '+' + (+v).toFixed(2) : key === 'range' ? (+v).toFixed(1)
-      : key === 'crit' || key === 'dodge' ? '+' + v + '%' : key === 'spd' ? '+' + v : v);
+    /* 展示格式：攻速/射程 3 位小数（清单110）；暴击/闪避/移速/装备伤害=百分点 %；武器伤害=整数 */
+    const fmt = (key, v) => (key === 'aspd' ? '+' + (+v).toFixed(3)
+      : key === 'range' ? (+v).toFixed(3)
+      : key === 'crit' || key === 'dodge' || key === 'spd'
+        || (key === 'dmg' && it.slot === 'armor') ? '+' + Math.round(v) + '%'
+      : v);
     /* 对比对象（反馈"无法对比装备武器"）：
        行囊物品 → 同槽当前装备；已装备 → 行囊同槽有效主属性最高者；无则单列 */
     let cmp = null;
@@ -206,25 +233,31 @@
       LG.Inv.bag.forEach((b) => {
         if (!b || b.slot !== it.slot || b === it) return;
         const e = 1 + LG.Config.ENHANCE_PER_LV * (b.lv - 1);
-        const s = (b.slot === 'weapon' ? b.stats.dmg : (b.stats.def || 0)) * e;
+        // 阶段二十三：防具按防御百分点比较（defPts 兼容旧分数档），避免旧档 0.35 被当成 0 分
+        const s = (b.slot === 'weapon' ? b.stats.dmg : LG.Inv.defPts(b.stats.def || 0)) * e;
         if (s > bestS) { bestS = s; best = b; }
       });
       cmp = best;
     }
     let statRow;
     if (cmp) { // 对比列：本件值 | 对比件值+差值（▲绿=本件更优 ▼红=更差 ＝持平）
-      const fmtD = (key, d) => (key === 'aspd' ? (d > 0 ? '+' : '') + d.toFixed(2)
-        : key === 'range' ? (d > 0 ? '+' : '') + d.toFixed(1)
-        : (d > 0 ? '+' : '') + Math.round(d)); // 整数词条（攻/防/移速/暴击%/闪避%）
+      const fmtD = (key, d) => (key === 'aspd' ? (d > 0 ? '+' : '') + d.toFixed(3)
+        : key === 'range' ? (d > 0 ? '+' : '') + d.toFixed(3)
+        : (d > 0 ? '+' : '') + Math.round(d)); // 整数词条（攻/防/移速%/暴击%/闪避%/伤害%）
       statRow = rows.map(([lbl, key]) => {
         const a = valOf(it, key), b = valOf(cmp, key);
+        if (!a && !b) return ''; // 双零词条行不显示（反馈"装备数值有0"：N 武器攻速/暴击等）
         const d = Math.round((a - b) * 100) / 100;
         const cls = d > 0 ? 'up' : d < 0 ? 'dn' : 'eq';
         const mark = d > 0 ? '▲' + fmtD(key, d) : d < 0 ? '▼' + fmtD(key, d) : '＝';
         return `<div class="ic-row"><span>${T()(lbl)}</span><b>${fmt(key, a)}</b><i class="${cls}">${fmt(key, b)} ${mark}</i></div>`;
       }).join('');
     } else {
-      statRow = rows.map(([lbl, key]) => `<span>${T()(lbl)} <b>${fmt(key, valOf(it, key))}</b></span>`).join('');
+      statRow = rows.map(([lbl, key]) => {
+        const a = valOf(it, key);
+        if (!a) return ''; // 零值词条不显示（同上：N 武器无攻速/暴击词条时不显示 +0.000/+0%）
+        return `<span>${T()(lbl)} <b>${fmt(key, a)}</b></span>`;
+      }).join('');
     }
     const enhTxt = it.lv >= LG.Config.MAX_LEVEL ? T()('enh_max')
       : T()('enhance') + ' ' + LG.Inv.enhanceCost(it); // 按钮标价（反馈"无法强化"：费用/满级状态一目了然）
@@ -263,7 +296,7 @@
     if (seB) seB.onclick = () => { const g = LG.Inv.sell(src.bag); toast('+' + g + ' ' + T()('silver_s')); renderBag(); };
   }
 
-  /* 一键分解（阶段二十反馈"添加一键分解功能"）：两段式确认防误触——
+  /* 一键出售（阶段二十反馈"添加一键分解功能"；阶段二十三清单107 改名"一键出售"）：两段式确认防误触——
      首次点击武装为"确认分解？"（3 秒内再点执行），分解行囊全部物品折银。 */
   function bindDismantle(body) {
     const db = body.querySelector('#bag-dismantle');
@@ -295,10 +328,11 @@
       <tr><td>${T()('exp')}</td><td>${P.exp}/${P.expTo || 'MAX'}</td></tr>
       <tr><td>攻击</td><td>${s.dmg}</td></tr>
       <tr><td>${T()('def')}</td><td>${s.def}</td></tr>
-      <tr><td>攻速</td><td>${s.aspd.toFixed(2)}</td></tr>
-      <tr><td>范围</td><td>${s.range.toFixed(2)}</td></tr>
+      <tr><td>攻速</td><td>${s.aspd.toFixed(3)}</td></tr>
+      <tr><td>范围</td><td>${s.range.toFixed(3)}</td></tr>
       <tr><td>暴击</td><td>${(s.crit * 100).toFixed(0)}%</td></tr>
       <tr><td>${T()('dodge')}</td><td>${(s.dodge * 100).toFixed(0)}%</td></tr>
+      <tr><td>${T()('move_speed')}</td><td>${s.spd.toFixed(3)}</td></tr>
       <tr><td>${T()('silver')}</td><td>${LG.Inv.silver}</td></tr>
       <tr><td>${T()('bonds')}</td><td style="text-align:left">${bl}</td></tr>
     </table>`);
@@ -620,6 +654,9 @@
       <div class="slider-row"><label>${T()('sfx')}</label><input type="range" id="s-sfx" min="0" max="1" step="0.05" value="${vol.sfx}"></div>
       <div class="slider-row"><label>${T()('brightness')}</label><input type="range" id="s-bright" min="0.3" max="1.8" step="0.05" value="${bright}"></div>
       <div class="slider-row"><label>${T()('font_scale')}</label><input type="range" id="s-font" min="1" max="3" step="0.5" value="${_fsNow}"></div>
+      <div class="slider-row"><label>${T()('ui_scale')} <span id="s-ui-v" style="color:#8a8f9e">${Math.round(_uiNow * 100)}%</span></label><input type="range" id="s-ui" min="0.7" max="1.3" step="0.05" value="${_uiNow}"></div>
+      <div class="slider-row"><label>${T()('world_lv')} <span id="s-wlv-tag" style="color:#8a8f9e">${LG.Config.WORLD_LEVEL.auto ? T()('auto') : T()('manual')}</span></label><input type="range" id="s-wlv" min="1" max="${LG.Config.MAX_LEVEL}" step="1" value="${LG.Config.worldLevel()}"></div>
+      <div style="text-align:center"><button class="btn small" id="s-wlv-mode">${LG.Config.WORLD_LEVEL.auto ? T()('manual') : T()('auto')}</button></div>
       <div class="slider-row"><label>${T()('language')}</label>
         <button class="btn small" id="s-lang">中文 / EN</button></div>
       <div style="text-align:center;margin-top:8px">
@@ -636,6 +673,25 @@
     p.querySelector('#s-sfx').oninput = (e) => LG.Sound.setVolume(+e.target.value, 'sfx');
     p.querySelector('#s-bright').oninput = (e) => setB(+e.target.value);
     p.querySelector('#s-font').oninput = (e) => applyFontScale(+e.target.value, true); // 字体大小即时生效（阶段二十）
+    // UI 大小（阶段二十三清单105）：即时生效（DOM zoom 与 Canvas HUD 一起缩放）
+    p.querySelector('#s-ui').oninput = (e) => {
+      applyUIScale(+e.target.value, true);
+      p.querySelector('#s-ui-v').textContent = Math.round(_uiNow * 100) + '%';
+    };
+    // 世界最高等级（阶段二十三清单111）：滑杆=手动档；「自动/手动」切换（自动=跟随玩家等级）
+    const wlvSl = p.querySelector('#s-wlv'), wlvTag = p.querySelector('#s-wlv-tag'), wlvBtn = p.querySelector('#s-wlv-mode');
+    const syncWlv = () => {
+      wlvSl.value = String(LG.Config.worldLevel());
+      wlvTag.textContent = LG.Config.WORLD_LEVEL.auto ? T()('auto') : T()('manual');
+      wlvBtn.textContent = LG.Config.WORLD_LEVEL.auto ? T()('manual') : T()('auto');
+    };
+    const persistWlv = () => LG.U.LS.set('worldLv', { auto: LG.Config.WORLD_LEVEL.auto, val: LG.Config.WORLD_LEVEL.val });
+    wlvSl.oninput = (e) => { LG.Config.WORLD_LEVEL.auto = false; LG.Config.WORLD_LEVEL.val = +e.target.value; syncWlv(); persistWlv(); };
+    wlvBtn.onclick = () => {
+      if (LG.Config.WORLD_LEVEL.auto) LG.Config.WORLD_LEVEL.val = LG.Config.worldLevel(); // 切手动时以当前档为起点
+      LG.Config.WORLD_LEVEL.auto = !LG.Config.WORLD_LEVEL.auto; syncWlv(); persistWlv();
+    };
+    syncWlv();
     p.querySelector('#s-lang').onclick = () => { LG.I18n.set(LG.I18n.lang === 'zh' ? 'en' : 'zh'); closePanel(); LG.U.bus.emit('lang_changed'); };
     p.querySelector('#s-map').onclick = () => renderMap();
     p.querySelector('#s-log').onclick = () => renderChangelog();
@@ -777,11 +833,13 @@
     show();
   }
 
-  /* ---------- 角色创建（Q51） ---------- */
+  /* ---------- 角色创建（Q51；阶段二十三清单114"支持自定义角色（自动随机名称）"） ---------- */
   function charCreate(cb) {
+    // 打开即自动填入随机名（中/英按当前语言），「随机」按钮可重掷
+    const rndName = () => LG.U.pick(LG.Config.CHAR_NAMES[LG.I18n.lang === 'zh' ? 'zh' : 'en']);
     const p = panel(T()('create_hero'), `
       <div style="text-align:center;margin-bottom:6px"><div class="cc-frame"><canvas id="cc-prev" width="64" height="64" style="image-rendering:pixelated;width:96px;height:96px"></canvas></div></div>
-      <div class="slider-row"><label>${T()('name')}</label><input class="inp" id="cc-name" maxlength="8" value="冒险者"></div>
+      <div class="slider-row"><label>${T()('name')}</label><input class="inp" id="cc-name" maxlength="8" value="${rndName()}"><button class="btn small" id="cc-rand">${T()('random')}</button></div>
       <div class="slider-row"><label>${T()('gender')}</label>
         <button class="btn small" id="cc-m">${T()('male')}</button><button class="btn small" id="cc-f">${T()('female')}</button></div>
       <div class="slider-row"><label>发色</label><input type="color" id="cc-hair" value="#3a2a1a"></div>
@@ -809,6 +867,7 @@
     wpnSel.onchange = redraw;
     p.querySelector('#cc-m').onclick = () => setG('M');
     p.querySelector('#cc-f').onclick = () => setG('F');
+    p.querySelector('#cc-rand').onclick = () => { p.querySelector('#cc-name').value = rndName(); }; // 重掷随机名
     setG('M'); // 初始选中男（与 look 默认一致）
     p.querySelector('#cc-hair').oninput = (e) => { look.hairColor = e.target.value; redraw(); };
     p.querySelector('#cc-skin').oninput = (e) => { look.skin = e.target.value; redraw(); };
@@ -1001,7 +1060,8 @@
     /* 手机缩放（反馈"UI太大显示不全，建议缩小50%"）：以虚拟坐标绘制
        （g.scale(U) 后所有原尺寸按 U 缩放），窄屏 U=0.5 整体缩小一半；
        字号经 fs() 换算并保底 10 物理像素，保证小字仍可读。 */
-    const U = W < 760 ? 0.5 : (W < 1100 ? 0.75 : 1);
+    // 虚拟坐标缩放：窄屏 0.5/0.75（阶段十三）× UI 大小滑杆（阶段二十三清单105）
+    const U = (W < 760 ? 0.5 : (W < 1100 ? 0.75 : 1)) * _uiNow;
     const vw = W / U, vh = H / U;
     const fs = (px) => (U >= 1 ? px : Math.max(10, px * U) / U);
     const coarse = window.matchMedia ? window.matchMedia('(pointer: coarse)').matches : ('ontouchstart' in window);
@@ -1149,5 +1209,6 @@
 
   LG.UI = { init, drawHUD, toast, panel, closePanel, togglePage, renderBag, renderStats, renderQuests,
     renderMap, renderSettings, renderChangelog, charCreate, dialog, tutorial, drawItemIcon, hudHit, escMenu,
-    applyFontScale, itemTitle, get fontScale() { return _fsNow; } };
+    applyFontScale, applyUIScale, itemTitle,
+    get fontScale() { return _fsNow; }, get uiScale() { return _uiNow; } };
 })();

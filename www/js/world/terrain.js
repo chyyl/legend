@@ -151,16 +151,15 @@
     return true;
   }
 
-  /* 环形主干道（2026-10-14 反馈"路线应类似一个圈"）：按 REGIONS 数组顺序（=等级推进顺序，
-     营地→边境长城→…→终末之战）把相邻区域串成一条闭合环线，末段终末之战回接收口——
-     沿环走总能回到出发点，联机队友有统一巡线不易走散。
-     （旧实现为营地→各区放射直线：星型无回路，跨区只能越野穿插）
+  /* 主干道（2026-10-14 反馈"路线应类似一个圈"；阶段二十三清单改"不闭合的圈"）：
+     按 REGIONS 数组顺序（=等级推进顺序，营地→边境长城→…→终末之战）把相邻区域
+     串成一条开口环线（C 形）——末段（终末之战→营地）不修，用户确认按清单断开。
      逐段直线 lerp 铺 3 宽路并清零高度；水面/城墙也直接铺成路面（阶段二十一：
-     跨海大桥水道与骷髅岛护城河由环路跨水成桥、长城穿墙成关口，环线全程可通行） */
+     跨海大桥水道与骷髅岛护城河由环路跨水成桥、长城穿墙成关口，全程可通行） */
   function buildRoads() {
     const R = LG.Config.REGIONS;
-    for (let ri = 0; ri < R.length; ri++) {
-      const a = R[ri], b = R[(ri + 1) % R.length]; // 末段 b 回到营地 → 闭环
+    for (let ri = 0; ri < R.length - 1; ri++) { // 开口环：不回接营地（清单"不闭合的圈"）
+      const a = R[ri], b = R[ri + 1];
       const steps = Math.ceil(Math.hypot(b.cx - a.cx, b.cy - a.cy));
       for (let s = 0; s < steps; s++) {
         const nx = Math.round(LG.U.lerp(a.cx, b.cx, s / steps));

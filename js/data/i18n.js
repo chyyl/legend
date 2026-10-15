@@ -55,10 +55,11 @@
       quest_available: '可接任务', quest_none: '暂无任务',
       guide_none: '找营地首领接取任务', guide_ready: '可提交，点击领取',
       guide_dist: '{0}格',
-      // 阶段二十：背包详情卡/一键分解/字体大小
-      unequip: '卸下', dismantle: '一键分解', dismantle_confirm: '确认分解？',
-      dismantle_done: '分解{0}件 +{1}银',
+      // 阶段二十：背包详情卡/一键分解/字体大小；阶段二十三：改名一键出售 + 新增 UI大小/世界等级/随机名
+      unequip: '卸下', dismantle: '一键出售', dismantle_confirm: '确认出售？',
+      dismantle_done: '售出{0}件 +{1}银',
       atk: '攻击', aspd: '攻速', range: '射程', crit: '暴击', font_scale: '字体大小',
+      ui_scale: 'UI大小', world_lv: '世界最高等级', auto: '自动', manual: '手动', random: '随机',
     },
     en: {
       title: 'LEGEND',
@@ -99,10 +100,11 @@
       quest_available: 'Available', quest_none: 'No quests',
       guide_none: 'See the camp chief for quests', guide_ready: 'Ready — tap to claim',
       guide_dist: '{0} tiles',
-      // Stage 20: bag detail card / dismantle / font scale
-      unequip: 'Unequip', dismantle: 'Dismantle', dismantle_confirm: 'Confirm?',
-      dismantle_done: 'Salvaged {0} items +{1} silver',
+      // Stage 20: bag detail card / dismantle / font scale; Stage 23: Sell All + UI scale / world lv / reroll
+      unequip: 'Unequip', dismantle: 'Sell All', dismantle_confirm: 'Confirm?',
+      dismantle_done: 'Sold {0} items +{1} silver',
       atk: 'ATK', aspd: 'Atk Spd', range: 'Range', crit: 'Crit', font_scale: 'Font Size',
+      ui_scale: 'UI Scale', world_lv: 'World Max Lv', auto: 'Auto', manual: 'Manual', random: 'Random',
     },
   };
 

@@ -1,7 +1,7 @@
 async (page) => {
   /* t6.js —— 阶段十八：地图寻路与观感优化回归
-     ① 环形主干道：REGIONS 相邻段（含末段回接营地）中点必须是道路或水面；
-        内陆锚点段必须是道路（环线真实存在，非星型放射）
+     ① 主干道（阶段二十三改开口环）：REGIONS 相邻 10 段（末段终末之战→营地不修，清单"不闭合的圈"）
+        中点必须是道路或水面；内陆锚点段必须是道路（主干道真实存在，非星型放射）
      ② 高低对比：同型瓦片 12×12 均匀区块在大地图烘焙后的亮度——
         台地(h1) > 平地(h0)×1.10、高山(h2) < 平地(h0)×0.75（反馈"高低不明显"的量化验收）
      ③ 队友标点：注入假队友 → 开大地图 → 画布指定处出现 #6cf 青点（反馈"玩家容易走散"）
@@ -24,17 +24,17 @@ async (page) => {
   await p.waitForFunction(() => window.LG && LG.Engine.scene === 'game', null, { timeout: 15000 });
   await p.waitForTimeout(400);
 
-  /* ===== ① 环形主干道：11 段（含闭环）中点为路或水面；内陆锚点段必须为路 ===== */
+  /* ===== ① 主干道：10 段开口环（不回接营地）中点为路或水面；内陆锚点段必须为路 ===== */
   out.ring = await p.evaluate(() => {
     const R = LG.Config.REGIONS, res = [];
-    for (let i = 0; i < R.length; i++) {
-      const a = R[i], b = R[(i + 1) % R.length];
+    for (let i = 0; i < R.length - 1; i++) { // 阶段二十三：末段不修 → length-1
+      const a = R[i], b = R[i + 1];
       const mx = Math.round((a.cx + b.cx) / 2), my = Math.round((a.cy + b.cy) / 2);
       res.push({ seg: a.id + '>' + b.id, t: (LG.Terrain.tileAt(mx, my) || {}).type, water: LG.Terrain.isWater(mx, my) });
     }
     return res;
   });
-  const anchors = ['camp>wall', 'wall>bay', 'farm>maze', 'maze>armory', 'bridge>castle', 'castle>final', 'final>camp'];
+  const anchors = ['camp>wall', 'wall>bay', 'farm>maze', 'maze>armory', 'bridge>castle', 'castle>final'];
   out.ringStats = {
     road: out.ring.filter((s) => s.t === 6).length,
     water: out.ring.filter((s) => s.t !== 6 && s.water).length,

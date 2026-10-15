@@ -1,18 +1,21 @@
 async (page) => {
-  /* t8.js —— 阶段二十（①②③⑥⑦⑩）+ 阶段二十二（④⑤⑧）：背包详情卡/强化感知/装备对比/武器前缀/一键分解/字体/地图回归
+  /* t8.js —— 阶段二十（①②③⑥⑦⑫）+ 阶段二十二（④⑤⑧）+ 阶段二十三（⑤零值行/⑥改名出售/⑪UI大小+世界等级）：背包详情卡/强化感知/装备对比/武器前缀/一键出售/字体/地图/设置回归
      ① 武器前缀：rollWeapon 均带前缀（词池内）；初始武器带前缀；存读档后仍在
      ② 行囊详情卡：点击物品 → 卡内有「前缀·基础名」标题/数值行/装备强化出售三按钮；
         pbody 滚到底详情卡仍吸底可见（反馈"装备和强化按钮找不到（在背包界面底部）"）
      ③ 已装备详情：点击装备槽 → 显示详情（含卸下按钮）且不再"点一下直接卸下"
         （反馈"不能查看装备武器详情"）；点卸下 → 物品回背包
      ④ 强化感知（阶段二十二反馈"无法强化无效"）：强化后卡面数值必须变化、按钮标价、强化加成行
-     ⑤ 装备对比列（反馈"无法对比装备武器"）：行囊 vs 当前装备 / 已装备 vs 行囊最佳，带差值箭头
-     ⑥ 一键分解两段式：首点变"确认分解？"不执行；再点分解行囊折银 + toast
+     ⑤ 装备对比列（反馈"无法对比装备武器"）：行囊 vs 当前装备 / 已装备 vs 行囊最佳，带差值箭头；
+        阶段二十三：双侧零值词条行隐藏（反馈"装备数值有0"）
+     ⑥ 一键出售两段式（清单107 改名，原"一键分解"）：首点变"确认出售？"不执行；再点出售折银 + toast
      ⑦ 字体大小：设置滑杆默认 1（反馈"默认字体大小1×"）；改 2 → 面板 zoom=2/--fs-inv=0.5 即时生效；
         再改 3 → 桌面面板横向仍在视口内（vw 补偿极限校验）
-     ⑧ 地图字体+环线道路烘焙连续性：fs3 下打开大地图，画布 font 走表捕获到 45px（15×3 区域名，基础字号 11→15 加大）
+     ⑧ 地图字体+主干道烘焙连续性：fs3 下打开大地图，画布 font 走表捕获到 45px（15×3 区域名，基础字号 11→15 加大）
      ⑨ 全新触屏上下文默认字号：fs=1、--fs-inv=1、无用户标记（反馈"默认字体大小1×"）
      ⑩ 全程零报错
+     ⑪ UI大小+世界最高等级（阶段二十三清单105/111）：UI 滑杆 0.7-1.3 默认1 → zoom=字体×UI、
+        --fs-inv=1/(字体×UI) 同步；世界等级默认自动=玩家等级、手动档 50 生效且落库
      运行：browser_run_code_unsafe({ filename: '.playwright-mcp/t8.js' }) */
   const S = 'C:/Users/L1896/Desktop/legend/.playwright-mcp/';
   const out = { errors: [], pass: {} };
@@ -117,7 +120,7 @@ async (page) => {
   out.pass.enh22 = out.enh22.lvUp && out.enh22.paid && out.enh22.statChanged
     && out.enh22.btnPrice && out.enh22.enhLine;
 
-  /* ===== ⑤ 装备对比列（阶段二十二反馈"无法对比装备武器"） ===== */
+  /* ===== ⑤ 装备对比列（阶段二十二反馈"无法对比装备武器"；阶段二十三零值行规则） ===== */
   out.cmp22 = await p.evaluate(() => {
     const inf = () => document.getElementById('item-info'); // renderBag 会重建面板，一律现取
     // 行囊物品视图：有同槽装备则应有对比列（组②③后装备槽为空 → 先装一把再看别的）
@@ -131,7 +134,13 @@ async (page) => {
       const v = LG.Inv.bag[+s.dataset.bag];
       return v && v.slot === 'weapon' && v !== LG.Inv.equip.weapon;
     });
-    if (slot) slot.click();
+    if (slot) {
+      // 固定双侧非零词条 → 4 行齐全（阶段二十三：零值行会被隐藏，随机 N 档可能只剩2行）
+      const v = LG.Inv.bag[+slot.dataset.bag];
+      v.stats = { dmg: 50, aspd: 0.25, range: 5.5, crit: 0.1 };
+      LG.Inv.equip.weapon.stats = { dmg: 40, aspd: 0.1, range: 3.5, crit: 0.05 };
+      slot.click();
+    }
     const v1 = {
       cmp: !!inf().querySelector('.ic-stats.cmp'),
       vs: /对比/.test(inf().textContent),
@@ -141,13 +150,30 @@ async (page) => {
     // 已装备物品视图：对比行囊最佳（行囊还有其他武器）
     document.querySelector('[data-eqslot=weapon]').click();
     const v2 = { cmp: !!inf().querySelector('.ic-stats.cmp'), rows: inf().querySelectorAll('.ic-row').length };
-    return { bagView: v1, eqView: v2 };
+    // 零值行隐藏（反馈"装备数值有0"）：双侧 aspd/crit 归零 → 仅剩攻击/射程 2 行，且卡面不出现 +0.000/+0%
+    let zHide = { rows: -1, zero: true, cmp: false };
+    const slot2 = Array.from(document.querySelectorAll('[data-bag]')).find((s) => {
+      const v = LG.Inv.bag[+s.dataset.bag];
+      return v && v.slot === 'weapon' && v !== LG.Inv.equip.weapon;
+    });
+    if (slot2) {
+      const v = LG.Inv.bag[+slot2.dataset.bag];
+      v.stats = { dmg: 50, aspd: 0, range: 5.5, crit: 0 };
+      LG.Inv.equip.weapon.stats = { dmg: 40, aspd: 0, range: 3.5, crit: 0 };
+      slot2.click();
+      const t2 = inf().textContent;
+      zHide = { rows: inf().querySelectorAll('.ic-row').length,
+                zero: /\+0(\.0+)?%|\+0\.000/.test(t2),
+                cmp: !!inf().querySelector('.ic-stats.cmp') };
+    }
+    return { bagView: v1, eqView: v2, zHide };
   });
   out.pass.cmp22 = out.cmp22.bagView.cmp && out.cmp22.bagView.vs
     && out.cmp22.bagView.rows >= 4 && out.cmp22.bagView.marks >= 4
-    && out.cmp22.eqView.cmp && out.cmp22.eqView.rows >= 4;
+    && out.cmp22.eqView.cmp && out.cmp22.eqView.rows >= 4
+    && out.cmp22.zHide.cmp && out.cmp22.zHide.rows === 2 && !out.cmp22.zHide.zero;
 
-  /* ===== ⑥ 一键分解（两段式） ===== */
+  /* ===== ⑥ 一键出售（两段式；原"一键分解"，清单107 改名） ===== */
   out.dism = await p.evaluate(() => {
     document.querySelectorAll('.toast').forEach((t) => t.remove()); // 清掉组④强化残留 toast（防抢读旧文案）
     const before = { silver: LG.Inv.silver,
@@ -159,7 +185,7 @@ async (page) => {
     db.click(); // 3 秒内再点 → 执行
     const toastTxt = (document.querySelector('.toast') || {}).textContent || '';
     const after = { silver: LG.Inv.silver, left: LG.Inv.bag.filter(Boolean).length };
-    return { before, armed, toastOk: toastTxt.indexOf('分解') >= 0,
+    return { before, armed, toastOk: toastTxt.indexOf('售出') >= 0,
              ok: after.left === 0 && after.silver === before.silver + before.expect };
   });
   out.pass.dism = out.dism.armed && out.dism.toastOk && out.dism.ok;
@@ -198,12 +224,13 @@ async (page) => {
     const panel = document.querySelector('.panel');
     const cv = document.querySelector('#bigmap');
     const r = cv.getBoundingClientRect();
-    /* 环线道路烘焙连续性（阶段二十二反馈"地图做的不够好"：路被 4.17 格步长单点采样漏成虚线
-       → 覆盖扫描重绘后，11 段环线中点在底图上应呈暖金路面色；迷宫未探索区设计上压黑不计） */
+    /* 主干道烘焙连续性（阶段二十二反馈"地图做的不够好"：路被 4.17 格步长单点采样漏成虚线
+       → 覆盖扫描重绘后，10 段开口环中点在底图上应呈暖金路面色；迷宫未探索区设计上压黑不计；
+       阶段二十三：末段终末之战→营地不修（清单"不闭合的圈"）→ 只扫 length-1 段） */
     const g2 = cv.getContext('2d');
     let roadHit = 0, tested = 0;
-    for (let ri = 0; ri < LG.Config.REGIONS.length; ri++) {
-      const a = LG.Config.REGIONS[ri], b = LG.Config.REGIONS[(ri + 1) % LG.Config.REGIONS.length];
+    for (let ri = 0; ri < LG.Config.REGIONS.length - 1; ri++) {
+      const a = LG.Config.REGIONS[ri], b = LG.Config.REGIONS[ri + 1];
       const wmx = (a.cx + b.cx) / 2, wmy = (a.cy + b.cy) / 2;
       if (LG.Terrain.isMazeAt(wmx | 0, wmy | 0)) continue;
       tested++;
@@ -245,7 +272,39 @@ async (page) => {
   })();
   out.pass.mobile = out.mobile.fs === 1 && out.mobile.inv === 1 && !out.mobile.flag;
 
-  /* ===== ⑩ 零报错 ===== */
+  /* ===== ⑪ UI大小 + 世界最高等级（阶段二十三清单105/111） ===== */
+  out.uiset = await p.evaluate(() => {
+    LG.UI.applyFontScale(1); LG.UI.applyUIScale(1); // 归一化基线（组⑦⑧留下 fs=3）
+    LG.UI.togglePage('settings', LG.UI.renderSettings);
+    const sl = document.querySelector('#s-ui'), tag = document.querySelector('#s-ui-v');
+    const defOk = !!sl && +sl.value === 1 && LG.UI.uiScale === 1 && +sl.min === 0.7 && +sl.max === 1.3;
+    sl.value = '1.2'; sl.dispatchEvent(new Event('input'));
+    const z = +getComputedStyle(document.querySelector('.panel')).zoom;
+    const inv = +document.documentElement.style.getPropertyValue('--fs-inv');
+    const uiOk = LG.UI.uiScale === 1.2 && Math.abs(z - 1.2) < 1e-6 && Math.abs(inv - 1 / 1.2) < 1e-6
+      && !!tag && tag.textContent === '120%';
+    // 世界最高等级：默认自动=玩家等级；手动滑杆 50 → worldLevel()=50；再切回自动
+    const wlv = document.querySelector('#s-wlv'), wtag = document.querySelector('#s-wlv-tag'),
+          wbtn = document.querySelector('#s-wlv-mode');
+    const autoOk = !!wlv && LG.Config.WORLD_LEVEL.auto === true
+      && LG.Config.worldLevel() === LG.Player.level && wtag.textContent === '自动';
+    wbtn.click();
+    wlv.value = '50'; wlv.dispatchEvent(new Event('input'));
+    const manOk = LG.Config.WORLD_LEVEL.auto === false && LG.Config.worldLevel() === 50
+      && (LG.U.LS.get('worldLv', {}) || {}).val === 50 && wtag.textContent === '手动';
+    wbtn.click();
+    const backOk = LG.Config.WORLD_LEVEL.auto === true && LG.Config.worldLevel() === LG.Player.level;
+    // 复位（防污染后续断言与存档）
+    LG.UI.applyUIScale(1); LG.UI.applyFontScale(1);
+    LG.Config.WORLD_LEVEL.auto = true; LG.Config.WORLD_LEVEL.val = 1;
+    LG.U.LS.set('worldLv', { auto: true, val: 1 });
+    return { defOk, uiOk, autoOk, manOk, backOk };
+  });
+  out.pass.uiset = out.uiset.defOk && out.uiset.uiOk && out.uiset.autoOk
+    && out.uiset.manOk && out.uiset.backOk;
+  await p.screenshot({ path: S + 't8-uiset.png' });
+
+  /* ===== ⑫ 零报错 ===== */
   out.pass.noErrors = out.errors.length === 0;
   out.allPass = Object.values(out.pass).every(Boolean);
   out.errors = out.errors.slice(0, 12);

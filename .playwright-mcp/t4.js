@@ -117,7 +117,7 @@ async (page) => {
     restore: out.noCC === true && out.restored.level === 3 && out.restored.exp === 55
              && out.restored.silver === 888 && out.restored.posMatch === true
              && out.restored.expTo === 220 && out.restored.chest0 === true
-             && out.restored.hasEquip === true && out.restored.name === '冒险者',
+             && out.restored.hasEquip === true && out.restored.name.length > 0, // 阶段二十三：创建页自动随机名，不再固定"冒险者"
     newPath: out.newGamePath === true && out.afterNew.level === 1 && out.afterNew.silver === 0
              && out.afterNew.slotLevel === 1,
     noErrors: out.errors.length === 0,

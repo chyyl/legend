@@ -2,14 +2,16 @@
    js/game/inventory.js —— 背包/装备/强化（Q56 格子无负重，Q35 银币强化）
    ----------------------------------------------------------------------------
    职责：管理 40 格背包、武器/四件装备槽、羁绊聚合（Q29 同类不叠加）、
-         银币强化（每级+5%基础）、出售/丢弃。
+         银币强化（每级+5%基础，上限随 MAX_LEVEL=99）、出售/一键出售。
 
    对外接口（window.LG.Inv）：
      .bag[] .equip{weapon,helm,chest,legs,boots} .silver
      .add(item) -> bool      .removeAt(i) .moveTo(i)
      .equipItem(i) .unequip(slot)
      .enhance(itOrRef) -> bool  强化（首选物品对象，兼容下标/编号）
-     .sell(i) -> silver  .dismantleAll() -> {count, silver}(一键分解行囊)
+     .enhanceCost(it) -> n      强化费用（50×当前等级）
+     .sell(i) -> silver  .dismantleAll() -> {count, silver}(一键出售行囊)
+     .defPts(v) -> n      防御词条归一（旧分数档→百分点）
      .calcStats() -> {dmg,aspd,range,crit,def,spd,dodge,dmgMul,defMul,expMul,...}
      .activeBonds() -> [bondId...]   聚合当前所有已装备羁绊（去重 Q29）
 
@@ -52,7 +54,7 @@
     return false; // 背包满
   }
 
-  /* 强化（Q35）：消耗银币，等级+1（上限10），每级+5%基础属性
+  /* 强化（Q35）：消耗银币，等级+1（上限 MAX_LEVEL，阶段二十三=99），每级+5%基础属性
      阶段二十：首选参数改为物品对象本身——旧版传 _id 会与背包下标撞号
      （行囊 i 位为空时会误强化 _id===i 的已装备物品）；数字参数仍按下标/编号兼容。
      阶段二十二（反馈"无法强化无效"）：费用抽出 enhanceCost 供详情卡按钮标价显示。 */
@@ -104,13 +106,17 @@
   }
 
   /* 综合角色属性：基础 + 装备 + 强化 + 羁绊 */
+  /* 防御词条归一：旧档分数制（0.05-0.5）→ 百分点（5-50）。旧分数取整后恒为 0，
+     是反馈"装备数值有0"的根源；新掉落直接存百分点（rollArmor ×100） */
+  function defPts(v) { const n = +v || 0; return n > 0 && n < 1 ? n * 100 : n; }
+
   function calcStats() {
     const lv = (LG.Player && LG.Player.level) || 1;
     // 基础成长（Q64 仅等级+装备）
     const s = {
       maxHp: 100 + (lv - 1) * 20,
       dmg: 10 + (lv - 1) * 2,
-      def: 0, aspd: 1, range: 1, crit: 0.05, spd: 3, dodge: 0,
+      def: 0, aspd: 1, range: 2, crit: 0.05, spd: 3, dodge: 0,
       dmgMul: 1, defMul: 1, aspdMul: 1, rangeMul: 1, expMul: 1,
       triCrit: 0, lifesteal: 0, phoenix: false,
     };
@@ -122,12 +128,13 @@
         s.dmg += it.stats.dmg * enh;
         // 阶段二十二（反馈"强化无效"）：攻速也纳入强化加成（每级+5%），强化收益从单一攻击词条变全面可感
         s.aspd += it.stats.aspd * enh; s.crit += it.stats.crit;
-        // 射程由主手武器直接决定（覆盖基础1，不做叠加——物品 range 已含武器基础值+品质词条；
-        // 盾/异常的0保留空手基础1）。阶段十七接入，替代旧"固定1格×PLAYER_RANGE_MULT(2)"
+        // 射程由主手武器直接决定（覆盖基础值，不做叠加——物品 range 已含武器基础值+品质词条；
+        // 盾/异常的0保留空手基础2）。阶段十七接入；阶段二十三空手基准 1→2（清单104"玩家攻击范围扩大1倍"）
         if (it.stats.range) s.range = it.stats.range;
       } else {
-        s.def += (it.stats.def || 0) * enh;
-        s.spd += it.stats.spd || 0; s.dmg += it.stats.dmg || 0; s.dodge += it.stats.dodge || 0;
+        // 阶段二十三：防御走百分点（defPts）；伤害词条=总伤百分比加成（旧分数值 0.1=+10% 天然兼容）
+        s.def += defPts(it.stats.def) * enh;
+        s.spd += it.stats.spd || 0; s.dmgMul *= 1 + (it.stats.dmg || 0); s.dodge += it.stats.dodge || 0;
       }
     });
     // 羁绊（去重后逐个应用）
@@ -145,7 +152,7 @@
   }
 
   LG.Inv = {
-    state, add, removeAt, equipItem, unequip, enhance, enhanceCost, sell, dismantleAll, priceOf, activeBonds, calcStats,
+    state, add, removeAt, equipItem, unequip, enhance, enhanceCost, sell, dismantleAll, priceOf, activeBonds, calcStats, defPts,
     get bag() { return state.bag; },
     get equip() { return state.equip; },
     get silver() { return state.silver; },

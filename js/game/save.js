@@ -74,6 +74,15 @@
     P.spawnedHpInit = true; // 防 update 首帧把读档血量覆盖成满血（见 player.js）
     // 背包定长覆写（顺带清掉本次会话多拾取的物品）；装备槽按档全量对齐
     LG.Inv.silver = d.inv.silver;
+    /* 阶段二十三数值迁移（反馈"装备数值有0"）：旧档防具 def 为分数制（≤0.5，取整后≈0）
+       → 统一转百分点；旧 D 档 def=0（旧品质表"无"）补下限 5 点。伤害/移速/闪避
+       旧分数值语义即"百分比"，新口径不变，无需迁移 */
+    const normArmor = (it) => {
+      if (!it || it.slot !== 'armor' || !it.stats) return;
+      it.stats.def = LG.Inv.defPts(it.stats.def) || 5;
+    };
+    (d.inv.bag || []).forEach(normArmor);
+    Object.values(d.inv.equip || {}).forEach(normArmor);
     for (let i = 0; i < LG.Inv.bag.length; i++) {
       LG.Inv.bag[i] = d.inv.bag && i < d.inv.bag.length ? d.inv.bag[i] : null;
     }

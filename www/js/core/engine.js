@@ -434,7 +434,8 @@
 
   function openChest(ch) {
     ch.opened = true;
-    const d = LG.Loot.openChest(LG.Net.difficulty, 2);
+    // 阶段二十三：宝箱奖励等级随世界最高等级（旧写死 2）
+    const d = LG.Loot.openChest(LG.Net.difficulty, LG.Config.worldLevel());
     LG.Inv.silver += d.silver;
     LG.Player.gainExp(d.exp);
     d.items.forEach((it) => LG.Inv.add(it));

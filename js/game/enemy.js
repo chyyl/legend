@@ -22,11 +22,16 @@
 
   function setDifficulty(d) { diff = d; }
 
-  /* 在区域内生成敌人（数量=密度×难度，Q63 线性） */
+  /* 在区域内生成敌人（数量=密度×难度，Q63 线性）
+     阶段二十三清单109（用户确认映射）：区域专属兵种池 etypes——精英只从本区
+     精英兵种里出，本区无精英兵种则不刷精英；etypes 缺省时回退全兵种混编 */
   function spawnRegion(region) {
     if (region.id === 'camp') return; // 营地是安全枢纽（NPC 聚落，Q42），不刷敌人
     const base = 18; // 每区域基础敌人数
     const n = Math.round(base * LG.Config.DIFFICULTY.density(diff) * (1 + region.lv * 0.1));
+    const all = LG.Config.ENEMY_TYPES;
+    const pool = (region.etypes && region.etypes.length)
+      ? all.filter((t) => region.etypes.indexOf(t.id) >= 0) : all;
     for (let i = 0; i < n; i++) {
       // 随机找可走点
       let x, y, tries = 0;
@@ -36,23 +41,25 @@
         tries++;
       } while (!LG.Terrain.walkable(x, y) && tries < 20);
       if (!LG.Terrain.walkable(x, y)) continue;
-      // 20% 精英（Q37）
+      // 20% 精英（Q37）：限定本区精英兵种；无精英兵种的区域跳过
       const isElite = Math.random() < 0.2;
-      const pool = LG.Config.ENEMY_TYPES.filter((t) => !!t.elite === isElite);
-      const type = LG.U.pick(pool.length ? pool : LG.Config.ENEMY_TYPES);
-      spawn(type, x, y, region);
+      const sub = pool.filter((t) => !!t.elite === isElite);
+      if (!sub.length) continue;
+      spawn(LG.U.pick(sub), x, y, region);
     }
   }
 
   function spawn(type, x, y, region) {
-    const st = LG.Config.enemyStat(type, diff, region.lv);
+    const kind = type.elite ? 'elite' : 'normal';
+    // 阶段二十三：生命/伤害=玩家10%基数×难度×精英档（清单表；玩家属性传入，见 Config.enemyStat）
+    const st = LG.Config.enemyStat(type, diff, kind, LG.Player && LG.Player.stats);
     const e = {
       type, x, y, region,
       hp: st.hp, maxHp: st.hp, dmg: st.dmg,
       speed: st.speed, range: st.range, aspd: st.aspd, aggro: st.aggro,
       state: 'idle',            // idle | chase | attack
       atkCd: 0, skillCd: 0,
-      kind: type.elite ? 'elite' : 'normal',
+      kind,
       facing: -1, phase: 0, dir: 's',
     };
     list.push(e);
@@ -61,17 +68,14 @@
 
   function spawnBoss(region) {
     if (!region.boss) return null;
-    // BOSS 用区域主题色放大绘制；属性=500%-1000%基础生命，伤害+15-40%（文档表）
+    // BOSS 用区域主题色放大绘制；属性=敌Stat(boss)档：基础生命×500-1000%、伤害+15-40%（清单表）
     const base = LG.Config.ENEMY_TYPES.find((t) => t.elite) || LG.Config.ENEMY_TYPES[0];
-    const hpMul = 5 + Math.random() * 5;      // 5-10倍
-    const dmgMul = 1.15 + Math.random() * 0.25;
-    const scale = LG.Config.DIFFICULTY.scale(diff);
+    const st = LG.Config.enemyStat(base, diff, 'boss', LG.Player && LG.Player.stats);
     const e = {
       type: { id: region.boss, zh: region.zh + '首领', en: region.en + ' Boss', move: 'slow',
               color: '#7a2f3c', elite: true },
       x: region.cx, y: region.cy, region,
-      hp: Math.round(base.hp * hpMul * scale), maxHp: Math.round(base.hp * hpMul * scale),
-      dmg: Math.round(base.dmg * dmgMul * scale),
+      hp: st.hp, maxHp: st.hp, dmg: st.dmg,
       speed: 0.8, range: 3, aspd: 1.2, aggro: 12,
       state: 'idle', atkCd: 0, skillCd: 3, kind: 'boss',
       facing: -1, phase: 0, isBoss: true, dir: 's',

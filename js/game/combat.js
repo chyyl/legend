@@ -57,9 +57,8 @@
     });
     // 敌人死亡：掉落结算
     LG.U.bus.on('enemy_dead', (e) => {
-      // region 可能缺失（联机同步重建的敌人、测试注入对象），按当前位置解析兜底
-      const erg = e.region || LG.Terrain.regionOf(e.x, e.y);
-      const drop = LG.Loot.dropFromEnemy(e.kind, currentDifficulty(), erg && erg.lv ? erg.lv : 1);
+      // 敌人等级 = 世界最高等级（阶段二十三清单111：默认自动=玩家等级，设置页可手动调）
+      const drop = LG.Loot.dropFromEnemy(e.kind, currentDifficulty(), LG.Config.worldLevel());
       LG.Inv.silver += drop.silver;
       LG.Player.gainExp(drop.exp * LG.Inv.calcStats().expMul);
       drop.items.forEach((it) => LG.Inv.add(it));
