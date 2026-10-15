@@ -24,10 +24,9 @@
   function init(cv) {
     canvas = cv;
     overlay = document.getElementById('overlay');
-    // 字体大小（阶段二十）：分端默认——触屏手机 1.5×（反馈"手机版字体太大，UI太大"）、桌面 3×；
-    // 用户动过滑杆（fontScaleUser 标记）则尊重其选择。旧版曾默认 3× 落库，无标记时一并迁移到分端默认
-    applyFontScale(LG.U.LS.get('fontScaleUser') ? LG.U.LS.get('fontScale', 2)
-      : (window.matchMedia && matchMedia('(pointer: coarse)').matches ? 1.5 : 3));
+    // 字体大小（阶段二十）：**默认 1×**（反馈"默认字体大小1×"）；用户动过滑杆（fontScaleUser 标记）
+    // 则保留其选择，旧版落库的 3×/1.5× 默认值无标记时自动回落 1×
+    applyFontScale(LG.U.LS.get('fontScaleUser') ? LG.U.LS.get('fontScale', 1) : 1);
     bindBus();
   }
 
@@ -385,11 +384,11 @@
       g.drawImage(base, mapV.x0, mapV.y0, span, span, 0, 0, 480, 480);
       // 区域名标签（位置随视图变换，字号随"字体大小"设置缩放——阶段二十反馈"地图的字体要放大"；
       // 描边保证任何底色上可读，剔除边界随字号外扩防止大字被裁）
-      const F = _fsNow, cull = 30 * F;
+      const F = _fsNow, cull = 36 * F; // 基础字号加大（反馈"地图的显示地面字体大一[点]"：11→15），剔除边界随之外扩
       LG.Config.REGIONS.forEach((rg) => {
         const sx = rg.cx * S - mapV.x0, sy = rg.cy * S - mapV.y0;
         if (sx < -cull || sx > 480 + cull || sy < -cull || sy > 480 + cull) return;
-        g.font = 'bold ' + (11 * F) + 'px "LegendKai", sans-serif'; g.textAlign = 'center';
+        g.font = 'bold ' + (15 * F) + 'px "LegendKai", sans-serif'; g.textAlign = 'center';
         const name = LG.I18n.lang === 'zh' ? rg.zh : rg.en;
         g.lineWidth = Math.min(6, 2 + F); g.strokeStyle = 'rgba(0,0,0,0.85)';
         g.strokeText(name, sx * z, sy * z);
@@ -400,18 +399,18 @@
       g.fillRect((LG.Player.x * S - mapV.x0) * z - 3, (LG.Player.y * S - mapV.y0) * z - 3, 6, 6);
       // 联机队友青点+名字（2026-10-14 反馈"玩家容易走散"：大地图看到彼此，找得到人）
       g.textAlign = 'center';
-      g.font = (10 * F) + 'px "LegendKai", sans-serif'; // 队友名随字体设置缩放（同上反馈）
+      g.font = (13 * F) + 'px "LegendKai", sans-serif'; // 队友名随字体设置缩放（基础 10→13，同上反馈）
       Object.keys(LG.Net.peers || {}).forEach((id) => {
         const pr = LG.Net.peers[id];
         if (!pr || pr.x == null) return;
         const fx = (pr.x * S - mapV.x0) * z, fy = (pr.y * S - mapV.y0) * z;
-        if (fx < -20 * F || fx > 480 + 20 * F || fy < -20 * F || fy > 480 + 20 * F) return;
+        if (fx < -24 * F || fx > 480 + 24 * F || fy < -24 * F || fy > 480 + 24 * F) return;
         g.fillStyle = '#6cf';
         g.fillRect(fx - 3, fy - 3, 6, 6);
         g.lineWidth = 2; g.strokeStyle = 'rgba(0,0,0,0.8)';
-        g.strokeText(pr.name || '队友', fx, fy + 14 * F);
+        g.strokeText(pr.name || '队友', fx, fy + 16 * F);
         g.fillStyle = '#aee6ff';
-        g.fillText(pr.name || '队友', fx, fy + 14 * F);
+        g.fillText(pr.name || '队友', fx, fy + 16 * F);
       });
       const zb = p.querySelector('#bm-zoom'); if (zb) zb.textContent = mapV.z.toFixed(1) + '×';
     }
@@ -513,7 +512,7 @@
       <div class="slider-row"><label>${T()('music')}</label><input type="range" id="s-music" min="0" max="1" step="0.05" value="${vol.music}"></div>
       <div class="slider-row"><label>${T()('sfx')}</label><input type="range" id="s-sfx" min="0" max="1" step="0.05" value="${vol.sfx}"></div>
       <div class="slider-row"><label>${T()('brightness')}</label><input type="range" id="s-bright" min="0.3" max="1.8" step="0.05" value="${bright}"></div>
-      <div class="slider-row"><label>${T()('font_scale')}</label><input type="range" id="s-font" min="1" max="3" step="0.5" value="${LG.U.LS.get('fontScale', 3)}"></div>
+      <div class="slider-row"><label>${T()('font_scale')}</label><input type="range" id="s-font" min="1" max="3" step="0.5" value="${_fsNow}"></div>
       <div class="slider-row"><label>${T()('language')}</label>
         <button class="btn small" id="s-lang">中文 / EN</button></div>
       <div style="text-align:center;margin-top:8px">

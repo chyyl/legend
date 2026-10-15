@@ -43,7 +43,7 @@
   --shadow: rgba(0, 0, 0, .55);
   /* 阶段二十·字体大小：#overlay 子元素 zoom 放大时，视口类尺寸(92vw/86vh…)乘此反比系数补偿，
      保证放大后仍贴合屏幕。默认 .33333 = 字体 3 倍（ui.js applyFontScale 每次覆盖写入） */
-  --fs-inv: .33333;
+  --fs-inv: 1;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }

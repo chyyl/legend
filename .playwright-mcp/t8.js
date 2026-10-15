@@ -6,10 +6,10 @@ async (page) => {
      ③ 已装备详情：点击装备槽 → 显示详情（含卸下按钮）且不再"点一下直接卸下"
         （反馈"不能查看装备武器详情"）；点卸下 → 物品回背包
      ④ 一键分解两段式：首点变"确认分解？"不执行；再点分解行囊折银 + toast
-     ⑤ 字体大小：设置滑杆默认 3；改 2 → 面板 zoom=2/--fs-inv=0.5 即时生效；
-        fs3 下桌面面板横向仍在视口内（vw 补偿生效）
-     ⑥ 地图字体：fs3 下打开大地图，画布 font 走表捕获到 33px（11×3 区域名）
-     ⑦ 手机端分端默认字号（反馈"手机版字体太大，UI太大"）：触屏上下文默认 1.5×、--fs-inv=2/3、无用户标记
+     ⑤ 字体大小：设置滑杆默认 1（反馈"默认字体大小1×"）；改 2 → 面板 zoom=2/--fs-inv=0.5 即时生效；
+        再改 3 → 桌面面板横向仍在视口内（vw 补偿极限校验）
+     ⑥ 地图字体：fs3 下打开大地图，画布 font 走表捕获到 45px（15×3 区域名，基础字号 11→15 加大）
+     ⑦ 全新触屏上下文默认字号：fs=1、--fs-inv=1、无用户标记（反馈"默认字体大小1×"）
      ⑧ 全程零报错
      运行：browser_run_code_unsafe({ filename: '.playwright-mcp/t8.js' }) */
   const S = 'C:/Users/L1896/Desktop/legend/.playwright-mcp/';
@@ -109,7 +109,7 @@ async (page) => {
   out.font = await p.evaluate(() => {
     LG.UI.togglePage('settings', LG.UI.renderSettings);
     const sl = document.querySelector('#s-font');
-    const defOk = !!sl && +sl.value === 3 && LG.UI.fontScale === 3;
+    const defOk = !!sl && +sl.value === 1 && LG.UI.fontScale === 1;
     sl.value = '2'; sl.dispatchEvent(new Event('input'));
     const panel = document.querySelector('.panel');
     const zoom2 = getComputedStyle(panel).zoom === '2';
@@ -140,14 +140,14 @@ async (page) => {
     const r = cv.getBoundingClientRect();
     cv.dispatchEvent(new WheelEvent('wheel', { deltaY: -120, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, bubbles: true }));
     Object.defineProperty(proto, 'font', d); // 还原
-    const has33 = seen.some((f) => f.indexOf('33px') >= 0); // 11px × 3
+    const has45 = seen.some((f) => f.indexOf('45px') >= 0); // 15px × 3（基础字号 11→15 加大）
     const zoomOk = getComputedStyle(panel).zoom === '3';
-    return { has33, zoomOk, sample: seen.filter((f) => f.indexOf('px') >= 0).slice(0, 3) };
+    return { has45, zoomOk, sample: seen.filter((f) => f.indexOf('px') >= 0).slice(0, 3) };
   });
-  out.pass.map = out.map.has33 && out.map.zoomOk;
+  out.pass.map = out.map.has45 && out.map.zoomOk;
   await p.screenshot({ path: S + 't8-map.png' });
 
-  /* ===== ⑦ 手机端分端默认字号（触屏上下文全新加载 → 未动过滑杆应落 1.5×） ===== */
+  /* ===== ⑦ 全新触屏上下文默认字号（应为 1×） ===== */
   out.mobile = await (async () => {
     const c2 = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 });
     const mp = await c2.newPage();
@@ -163,7 +163,7 @@ async (page) => {
     await c2.close();
     return r;
   })();
-  out.pass.mobile = out.mobile.fs === 1.5 && Math.abs(out.mobile.inv - 2 / 3) < 0.001 && !out.mobile.flag;
+  out.pass.mobile = out.mobile.fs === 1 && out.mobile.inv === 1 && !out.mobile.flag;
 
   /* ===== ⑧ 零报错 ===== */
   out.pass.noErrors = out.errors.length === 0;

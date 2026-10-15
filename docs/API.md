@@ -189,8 +189,9 @@
   `src={bag:i}` 或 `{eq:slot}`；`bindDismantle(btn)` 两段式确认（首点变"确认分解？"3 秒内再点执行）
 - 字体大小（阶段二十）：`applyFontScale(v, userSet?)` 即时改 `--fs-inv` 与 `#overlay > *` 的 zoom 并落库
   （`fontScale` 1~3；`userSet=true` 落 `fontScaleUser` 标记）；`fontScale` getter 返回当前倍率；
-  **分端默认**：触屏手机 1.5×、桌面 3×（反馈"手机版字体太大，UI太大"），动过滑杆则尊重用户选择；
-  `renderMap()` 的区域名/队友名字号 = 基础字号 × 当前倍率（反馈"地图的字体要放大"）
+  **默认 1×**（反馈"默认字体大小1×"；动过滑杆保留用户选择，旧 3×/1.5× 落库值无标记自动回落）；
+  `renderMap()` 的区域名/队友名字号 = 基础字号（**15/13px**，反馈"地图的显示地面字体大一[点]"，原 11/10）
+  × 当前倍率（前次反馈"地图的字体要放大"）
 - `renderSettings()`：menu 场景打开时追加 `#s-back` 返回按钮（回 `Engine.openMenu`）；
   阶段十九追加 `#s-log`「更新日志」按钮（开 `renderChangelog` 子页）与 `#s-ver` 当前版本行；
   阶段二十追加 `#s-font` 字号滑杆（1~3 步进 0.5，oninput 即时生效）
