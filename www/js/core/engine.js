@@ -48,12 +48,15 @@
     const lore = LG.Config.LORE[LG.I18n.lang] || '';
     // 阶段十五：有存档时主按钮变"继续游戏"，另加"新游戏"（清意向直开=重走角色创建）
     const hasSave = LG.Save.hasSave(1);
+    // 阶段二十五：节日横幅（holiday.banner 返回纯文本；无活动 ''，禁用 emoji）
+    const hdBanner = LG.Holiday ? LG.Holiday.banner() : '';
     const p = LG.UI.panel('', `
       <div class="menu-logo">
         <div class="logo-main">LEGEND</div>
         <div class="logo-sub">${zh ? '· 传 奇 ·' : '· CHRONICLES ·'}</div>
       </div>
       <div class="menu-lore">${lore.length > 110 ? lore.slice(0, 110) + '…' : lore}</div>
+      ${hdBanner ? `<div class="menu-event" id="mm-event">${hdBanner}</div>` : ''}
       <div class="menu-btns">
         <button class="btn primary" id="mm-start">${LG.I18n.get(hasSave ? 'continue_game' : 'start_game')}</button>
         ${hasSave ? `<button class="btn" id="mm-new">${LG.I18n.get('new_game')}</button>` : ''}
@@ -128,7 +131,9 @@
     if (Engine.scene !== 'game') return;
     const W = window.innerWidth, H = window.innerHeight;
     const rg = LG.Terrain.regionOf(LG.Player.x, LG.Player.y);
-    const th = PARTICLE_THEME[(rg && rg.biome)] || PARTICLE_THEME.default;
+    // 节日主题优先（阶段二十五）：活动期覆盖区域生态粒子，换主题即换色形
+    const th = (LG.Holiday && LG.Holiday.particleTheme())
+      || PARTICLE_THEME[(rg && rg.biome)] || PARTICLE_THEME.default;
     if (PRTC.th !== th) { PRTC.th = th; PRTC.ps.length = 0; } // 换区域重铺粒子（取新主题的速度/颜色）
     const ps = PRTC.ps;
     while (ps.length < P_N) ps.push({
@@ -153,7 +158,11 @@
       const a = th.a * (0.45 + 0.55 * (0.5 + 0.5 * Math.sin(p.ph))); // 呼吸透明度
       g.fillStyle = 'rgba(' + th.c + ',' + a.toFixed(3) + ')';
       const s = th.sz * p.k;
-      g.fillRect(p.x, p.y, s, s);
+      if (th.shape === 'dot') { // 节日粒子形状（阶段二十五）：dot=圆光点，缺省=方块
+        g.beginPath();
+        g.arc(p.x + s / 2, p.y + s / 2, Math.max(1, s * 0.8), 0, 6.2832);
+        g.fill();
+      } else g.fillRect(p.x, p.y, s, s);
     }
   }
 
@@ -213,6 +222,9 @@
     if (!saved) spawnRegionOnce(camp); // 读档者由首帧区域检测生成所在区域敌人
     LG.Save.autosave();
     LG.Sound.bgm(saved ? ((LG.Terrain.regionOf(LG.Player.x, LG.Player.y) || {}).id || camp.id) : camp.id);
+    // 节日问候（阶段二十五）：进世界即提示活动生效（联机客户端此刻已应用房主日期）
+    const hdGreet = LG.Holiday ? LG.Holiday.greeting() : null;
+    if (hdGreet) LG.UI.toast(hdGreet);
     // 教程（Q67 可跳过）
     setTimeout(() => LG.UI.tutorial(), 600);
     // 客户端开始上报（Q55 角色本地、世界随房主）

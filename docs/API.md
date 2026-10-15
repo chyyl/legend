@@ -110,9 +110,11 @@
 ### 7.1 LG.Loot（js/game/loot.js）
 - `rollWeapon(difficulty, regionLv, bonusP)` / `rollArmor(...)` → 装备实例
   实例：`{slot, weaponId?|armorSlot?, kind?, quality, lv, stats:{dmg,aspd,range,crit|def,spd,dodge}, bonds:[id], _id}`
-  武器另带 `prefix:{zh,en}`（阶段二十：生成时从 `Config.WEAPON_PREFIXES` 随机前缀，随存档序列化；防具无前缀）
-- `dropFromEnemy(kind,difficulty,regionLv)` → `{silver, exp, items[]}`（普通12%/精英45%/BOSS必掉+保底高品质）
-- `openChest(difficulty,regionLv)` → 同上（品质加成 ×1.5）
+  武器另带 `prefix:{zh,en}`（阶段二十：生成时从 `Config.WEAPON_PREFIXES` 随机前缀，随存档序列化；防具无前缀；
+  **阶段二十五：活动期内被 `Holiday.prefix` 覆盖为节日前缀「春节·」，只加名不改数值**）
+- `dropFromEnemy(kind,difficulty,regionLv)` → `{silver, exp, items[]}`（普通12%/精英45%/BOSS必掉+保底高品质；
+  **阶段二十五：返回前经 `Holiday.merged()` 乘算经验/银币、掉率概率 ×drop**）
+- `openChest(difficulty,regionLv)` → 同上（品质加成 ×1.5；节日加成同上，drop>1 时另有概率额外一件）
 
 ### 7.2 LG.Inv（js/game/inventory.js）
 - `bag`（40格数组） `equip`（weapon+四槽） `silver`
@@ -223,6 +225,21 @@
   横屏手机≈390 高）面板放宽至 96vh、画布按 `calc(96vh-140px)` 收敛——此前 86vh+`overflow:hidden`
   把地图底部裁掉，裁剪区外触点命中的是底层游戏画布（阶段十七一并修复）
 
+### 7.10 LG.Holiday（js/data/holiday.js）— 节假日活动系统（阶段二十五）
+- `today(now?)` → 当日节日 `{id, name:{zh,en}, start, end, bonus:{exp,silver,drop}}` 或 `null`（纯日历、
+  不受联机覆盖；`now`/`_now` 可注入 Date/ms）。8 节日：元旦/春节/元宵/端午/中秋/国庆/万圣节/圣诞——
+  公历直判 + 农历 `LUNAR` 年表 2026-2035 查表（无表年份回退不报错），全程离线
+- `activeList(now?)` → 生效节日数组（**联机覆盖优先**：`_remote` 房主日期 > 本地日历窗口）
+- `merged(now?)` → `{exp, silver, drop}` 乘法合并加成（无活动全 1）——**数值接入唯一出口**，
+  `Loot.dropFromEnemy/openChest` 调用；`combat.enemy_dead` 经掉落结构自动生效
+- `prefix(weapon)` → 活动期写入限定前缀 `{zh,en}`（覆盖随机词）并返回 weapon；非活动原样返回
+- `remaining(now?)` → 主活动距结束秒数；`greeting(now?)` → 进世界问候（`I18n.lang` 双语 / null）；
+  `banner(now?)` → 主菜单横幅纯文本（`''`=无活动，注入 `#mm-event`；禁用 emoji）
+- `particleTheme()` → 主题粒子 `{c,vx,vy,a,sz,shape}` 或 null（活动期覆盖区域生态，engine 更新/绘制）
+- 联机：`syncPacket()` → `{id, remain}`（房主随 `{t:'start'}` 广播）；`applyRemote(pkt)` →
+  客户端应用（`undefined`=旧版缺字段保持本地；`{id:null}`=房主无活动则本地也停用）
+- 注入点：`_now`（测试时刻）/ `_remote`（`{id,endMs}` 覆盖态）。窗口 = 节日起 `[00:00,+dur天)` 本地时区
+
 ## 8. 联机模块
 
 ### 8.1 LG.Net（js/net/net.js）
@@ -235,6 +252,8 @@
 - `show()` 大厅面板（Q52 在线列表+房间+角色形象） `players[]`
 - `startSolo()` 单人直开：主菜单「开始游戏」→ 直接建 1 人房开局（不经大厅；反馈⑦"开始游戏与联机大厅在一起"的拆分入口）
 - 确认开局 emit `start_game {players, host}`；单人=1人房（Q1）
+- **阶段二十五**：房主随 `{t:'start'}` 广播 `holiday:{id,remain}`（`Holiday.syncPacket()`），
+  客户端 `applyRemote` 跟随房主日期结算节日
 
 ## 9. LG.Engine（js/core/engine.js）— 装配层
 

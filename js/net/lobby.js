@@ -124,10 +124,14 @@
       if (m.t === 'join' && LG.Net.isHost) {
         Lobby.players.push({ id: 'p' + Lobby.players.length, name: m.name, look: m.look });
         renderPlayers();
-        LG.Net.broadcast({ t: 'start', players: Lobby.players, difficulty: LG.Net.difficulty });
+        // 节日以房主日期为准（阶段二十五）：随开局包广播 {id,remain}
+        LG.Net.broadcast({ t: 'start', players: Lobby.players, difficulty: LG.Net.difficulty,
+                           holiday: LG.Holiday ? LG.Holiday.syncPacket() : undefined });
       }
       if (m.t === 'start') {
         Lobby.players = m.players; LG.Net.difficulty = m.difficulty;
+        // 客户端跟随房主节日（undefined=旧版本缺字段则保持本地判定）
+        if (LG.Holiday) LG.Holiday.applyRemote(m.holiday);
         startGame(false);
       }
       if (m.t === 'in' && LG.Net.isHost) {

@@ -9,7 +9,7 @@
     3) 提供 Canvas 舞台与加载遮罩
 
   依赖顺序（下述脚本彼此通过 window.LG 命名空间通信，互不直接引用内部实现）：
-    data/i18n -> core/config -> core/utils -> core/assets -> core/input
+    data/i18n -> data/holiday -> core/config -> core/utils -> core/assets -> core/input
     -> audio/audio -> world/terrain -> world/pathfinding -> world/camera -> world/decor
     -> game/loot -> game/inventory -> game/player -> game/enemy
     -> game/combat -> game/quest -> game/npc -> game/save -> game/ui
@@ -53,6 +53,7 @@
   <script src="js/generated/changelog.js"></script>
   <!-- ===== 核心层 ===== -->
   <script src="js/data/i18n.js"></script>
+  <script src="js/data/holiday.js"></script>
   <script src="js/core/config.js"></script>
   <script src="js/core/utils.js"></script>
   <script src="js/core/assets.js"></script>

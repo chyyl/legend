@@ -17,7 +17,8 @@
        stats:{dmg,aspd,range,crit,def,spd,dodge}, bonds:[bondId...],
         prefix?:{zh,en}(武器专属，随机前缀词池), _id }
 
-   依赖：core/config.js（品质表/羁绊表/公式）、core/utils.js。
+   依赖：core/config.js（品质表/羁绊表/公式）、core/utils.js、
+         data/holiday.js（阶段二十五：merged() 节日加成乘算、Holiday.prefix 限定前缀）。
    ========================================================================== */
 (function () {
   'use strict';
@@ -59,8 +60,10 @@
     const nb = LG.U.randInt(q.bonds[0], q.bonds[1]);
     // 阶段二十：每件武器随机前缀（反馈"最好每一个武器都有前缀名字"），展示为「前缀·基础名」
     const prefix = LG.U.pick(LG.Config.WEAPON_PREFIXES);
-    return { slot: 'weapon', weaponId: base.id, kind: base.kind, quality: q.id, lv,
-             stats, bonds: rollBonds(nb), prefix, _id: ++uid };
+    const inst = { slot: 'weapon', weaponId: base.id, kind: base.kind, quality: q.id, lv,
+                   stats, bonds: rollBonds(nb), prefix, _id: ++uid };
+    // 阶段二十五：活动期限定前缀（覆盖随机词「春节·铁刃」式；只加名不改数值平衡）
+    return LG.Holiday ? LG.Holiday.prefix(inst) : inst;
   }
 
   /* ---------- 装备实例（四槽位之一） ----------
@@ -94,28 +97,35 @@
   function dropFromEnemy(kind, difficulty, regionLv) {
     // kind: 'normal'|'elite'|'boss'；regionLv=敌等级（阶段二十三=世界最高等级，见文件头）
     const se = LG.Config.silverExp(regionLv, kind, difficulty);
+    // 节日加成（阶段二十五 merged 单一出口）：经验/银币乘算、掉率概率乘算
+    const hd = (LG.Holiday && LG.Holiday.merged()) || { exp: 1, silver: 1, drop: 1 };
     const items = [];
-    // 掉落概率：普通12% 精英45% BOSS必掉（并按难度加成）
+    // 掉落概率：普通12% 精英45% BOSS必掉（并按难度加成 × 节日掉率）
     const baseP = kind === 'boss' ? 1 : kind === 'elite' ? 0.45 : 0.12;
-    if (Math.random() < baseP * LG.Config.DIFFICULTY.drop(difficulty)) {
+    if (Math.random() < baseP * LG.Config.DIFFICULTY.drop(difficulty) * hd.drop) {
       items.push(Math.random() < 0.5 ? rollWeapon(difficulty, regionLv) : rollArmor(difficulty, regionLv));
     }
     // BOSS 额外保底一件高品质
     if (kind === 'boss') items.push(rollWeapon(difficulty, regionLv, 3));
-    return { silver: se.silver, exp: se.exp, items };
+    return { silver: Math.round(se.silver * hd.silver), exp: Math.round(se.exp * hd.exp), items };
   }
 
   /* ---------- 宝箱（Q44 可交互+概率表） ---------- */
   function openChest(difficulty, regionLv) {
     const se = LG.Config.silverExp(regionLv, 'normal', difficulty);
-    const silver = Math.round(se.silver * (1 + Math.random()));
+    // 节日加成（阶段二十五）：经验/银币乘算；掉率转"额外一件"概率（=drop-1，无活动 0）
+    const hd = (LG.Holiday && LG.Holiday.merged()) || { exp: 1, silver: 1, drop: 1 };
+    const silver = Math.round(se.silver * (1 + Math.random()) * hd.silver);
     const items = [];
     const n = LG.U.randInt(1, 2);
     for (let i = 0; i < n; i++) {
       // 宝箱品质略优于野怪（bonusP=1.5）
       items.push(Math.random() < 0.6 ? rollWeapon(difficulty, regionLv, 1.5) : rollArmor(difficulty, regionLv, 1.5));
     }
-    return { silver, exp: Math.round(se.exp * 0.5), items };
+    if (hd.drop > 1 && Math.random() < hd.drop - 1) {
+      items.push(Math.random() < 0.6 ? rollWeapon(difficulty, regionLv, 1.5) : rollArmor(difficulty, regionLv, 1.5));
+    }
+    return { silver, exp: Math.round(se.exp * 0.5 * hd.exp), items };
   }
 
   LG.Loot = { rollWeapon, rollArmor, dropFromEnemy, openChest, rollBonds };
