@@ -75,6 +75,9 @@ async (page) => {
   });
 
   // 开大地图（烘焙底图就绪）→ 采样
+  // 阶段二十（字体默认3倍）：区域名标签 33px 覆盖大片图面，采样像素会命中字形
+  // （实测 617=#e8d9a8 字色）。对比度量的是烘焙地形本身 → 采样期临时切 1×（t8 另有字体专项），完事还原
+  const fsPrev = await p.evaluate(() => { const v = LG.U.LS.get('fontScale', 3); LG.UI.applyFontScale(1); return v; });
   await p.evaluate(() => LG.UI.togglePage('map', LG.UI.renderMap));
   await p.waitForSelector('#bigmap', { timeout: 5000 });
   out.bake = await p.evaluate((bl) => {
@@ -92,6 +95,7 @@ async (page) => {
       h2: bl.h2pair ? { base: luma(bl.h2pair.base), test: luma(bl.h2pair.test) } : null,
     };
   }, out.blocks);
+  await p.evaluate((v) => LG.UI.applyFontScale(v), fsPrev); // 还原字体设置
   out.pass.contrastH1 = !!out.bake.h1 && out.bake.h1.test > out.bake.h1.base * 1.10;
   out.pass.contrastH2 = !!out.bake.h2 && out.bake.h2.test < out.bake.h2.base * 0.75;
   await p.screenshot({ path: S + 't6-map-contrast.png' });
