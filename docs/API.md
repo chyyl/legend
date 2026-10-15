@@ -31,6 +31,7 @@
 | `DIFFICULTY` | `{min,max,default, scale(d), density(d), drop(d), currency(d)}` | Q33 连续滑块 0~2，默认 0.9 |
 | `QUALITY_W` / `QUALITY_A` | 品质表 | 武器 N/R/SR/SSR、装备 D~SS，含概率 `p`、羁绊数 `bonds:[min,max]` |
 | `WEAPONS` | 武器定义 | `{id, kind:'melee'\|'ranged'\|'magic'\|'shield', zh, en, base, range, aspd, arc?, proj?, aoe?}` |
+| `WEAPON_PREFIXES` | 武器前缀词池（阶段二十） | `{zh, en}[]` 16 词；`loot.rollWeapon` 随机取一挂到实例 `prefix`，展示为「前缀·基础名」，防具无前缀 |
 | `ARMOR_SLOTS` | `['helm','chest','legs','boots']` 对象化 | 四装备槽 |
 | `BONDS` | 羁绊8种 | `{id, zh, en, desc_zh, desc_en, apply(stats)}`，等概率随机、同类不叠加 |
 | `ENEMY_TYPES` | 敌人类型 | 人类军队：`{id, zh, move:'fixed'\|'slow', hp, dmg, range, aspd, speed, aggro, elite, proj?, aoe?}` |
@@ -109,13 +110,17 @@
 ### 7.1 LG.Loot（js/game/loot.js）
 - `rollWeapon(difficulty, regionLv, bonusP)` / `rollArmor(...)` → 装备实例
   实例：`{slot, weaponId?|armorSlot?, kind?, quality, lv, stats:{dmg,aspd,range,crit|def,spd,dodge}, bonds:[id], _id}`
+  武器另带 `prefix:{zh,en}`（阶段二十：生成时从 `Config.WEAPON_PREFIXES` 随机前缀，随存档序列化；防具无前缀）
 - `dropFromEnemy(kind,difficulty,regionLv)` → `{silver, exp, items[]}`（普通12%/精英45%/BOSS必掉+保底高品质）
 - `openChest(difficulty,regionLv)` → 同上（品质加成 ×1.5）
 
 ### 7.2 LG.Inv（js/game/inventory.js）
 - `bag`（40格数组） `equip`（weapon+四槽） `silver`
-- `add(item)` → bool；`equipItem(i)` / `unequip(slot)` / `enhance(itemOrId)`（Q35 银币强化，每级+5%，上限10）
-- `sell(i)` → 银币；`activeBonds()` → 去重羁绊（Q29）；`calcStats()` → 综合属性（基础+装备+羁绊归一化）；
+- `add(item)` → bool；`equipItem(i)`（换下旧装备）/ `unequip(slot)` 
+- `enhance(ref)`（Q35 银币强化，每级+5%，上限10）：**首选传物品对象**——阶段二十修复：旧版传 `_id`
+  会与背包下标撞号，行囊有空位时误强化同编号的已装备物品；数字参数（下标/编号）兼容保留
+- `sell(i)` → 银币；`priceOf(it)` → 品质售价×等级（出售/一键分解共用折银表）；
+  `dismantleAll()` → `{count, silver}`（阶段二十"一键分解"：分解行囊全部物品、已装备槽不受影响）；`activeBonds()` → 去重羁绊（Q29）；`calcStats()` → 综合属性（基础+装备+羁绊归一化）；
   **射程**（阶段十七）= 主手武器 `stats.range`（`Config.WEAPONS` 基础值+品质词条，覆盖空手基础1）× 羁绊 `rangeMul`
 
 ### 7.3 LG.Player（js/game/player.js）
@@ -175,10 +180,20 @@
   右上攻击模式徽章（绿/金/灰宝石=开/半/关）、BOSS 金框血条（**触屏横屏 W>H 时置顶居中 bby=34**，
   防固定 H-210 在矮屏落到屏幕中部切过 BOSS 本体；竖屏 H-210、桌面 H-62 保持底部）；坐标一律 CSS 像素（DPR≥2 下 canvas.width 会错位）
 - 五页：`renderBag() renderStats() renderQuests() renderMap() renderSettings()`（Q50，前三个 return 面板对象供 toggle 识别）
-- `renderBag()` 结构（阶段十二）：`.panel-bag` 显式 640 宽（grid auto-fill 在 shrink-to-fit 下会塌成 1 列）+
-  `.eq-col` 装备列带 `.slot-tag` 槽位标签 + `.bag-grid` 40 格 + `.item-card` 详情卡；小屏（≤720px）装备横排单行
+- `renderBag()` 结构（阶段二十重做）：`.panel-bag` 显式宽度（grid auto-fill 在 shrink-to-fit 下会塌成 1 列）+
+  `.eq-col` 装备列带 `.slot-tag` 槽位标签（点击=**查看详情**，不再一点即卸）+ `.bag-grid` 40 格（`.bag-cap` 顶部
+  左计数右「一键分解」）+ `.item-card` 详情卡——**卡片为 `.pbody` 直下子元素**（若留在 `.bag-right` flex 子项内
+  则 sticky 无吸底空间、滚动即被裁走），吸底常驻
+- `itemDetail(it, src)` / `itemTitle(it)`（阶段二十）：详情卡内容=「前缀·基础名」标题+品质/等级+数值行
+  （武器：攻击·攻速·射程·暴击；防具：防御·攻击·移速·闪避）+羁绊+按钮组（装备|卸下、强化、出售）；
+  `src={bag:i}` 或 `{eq:slot}`；`bindDismantle(btn)` 两段式确认（首点变"确认分解？"3 秒内再点执行）
+- 字体大小（阶段二十）：`applyFontScale(v, userSet?)` 即时改 `--fs-inv` 与 `#overlay > *` 的 zoom 并落库
+  （`fontScale` 1~3；`userSet=true` 落 `fontScaleUser` 标记）；`fontScale` getter 返回当前倍率；
+  **分端默认**：触屏手机 1.5×、桌面 3×（反馈"手机版字体太大，UI太大"），动过滑杆则尊重用户选择；
+  `renderMap()` 的区域名/队友名字号 = 基础字号 × 当前倍率（反馈"地图的字体要放大"）
 - `renderSettings()`：menu 场景打开时追加 `#s-back` 返回按钮（回 `Engine.openMenu`）；
-  阶段十九追加 `#s-log`「更新日志」按钮（开 `renderChangelog` 子页）与 `#s-ver` 当前版本行
+  阶段十九追加 `#s-log`「更新日志」按钮（开 `renderChangelog` 子页）与 `#s-ver` 当前版本行；
+  阶段二十追加 `#s-font` 字号滑杆（1~3 步进 0.5，oninput 即时生效）
 - `renderChangelog()`（阶段十九）：更新日志页，数据源 `LG.CHANGELOG`（`js/generated/changelog.js`，
   由仓库根 `CHANGELOG.md` 经 `npm run sync` 生成，每次开发会话至少一条）；条目=版本+日期+要点列表，
   底部显示当前版本（`LG.Updater.current()`）；`dataset.page='settings'` 归设置语义关闭

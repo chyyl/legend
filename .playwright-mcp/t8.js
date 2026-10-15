@@ -9,7 +9,8 @@ async (page) => {
      ⑤ 字体大小：设置滑杆默认 3；改 2 → 面板 zoom=2/--fs-inv=0.5 即时生效；
         fs3 下桌面面板横向仍在视口内（vw 补偿生效）
      ⑥ 地图字体：fs3 下打开大地图，画布 font 走表捕获到 33px（11×3 区域名）
-     ⑦ 全程零报错
+     ⑦ 手机端分端默认字号（反馈"手机版字体太大，UI太大"）：触屏上下文默认 1.5×、--fs-inv=2/3、无用户标记
+     ⑧ 全程零报错
      运行：browser_run_code_unsafe({ filename: '.playwright-mcp/t8.js' }) */
   const S = 'C:/Users/L1896/Desktop/legend/.playwright-mcp/';
   const out = { errors: [], pass: {} };
@@ -146,7 +147,25 @@ async (page) => {
   out.pass.map = out.map.has33 && out.map.zoomOk;
   await p.screenshot({ path: S + 't8-map.png' });
 
-  /* ===== ⑦ 零报错 ===== */
+  /* ===== ⑦ 手机端分端默认字号（触屏上下文全新加载 → 未动过滑杆应落 1.5×） ===== */
+  out.mobile = await (async () => {
+    const c2 = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 });
+    const mp = await c2.newPage();
+    mp.on('pageerror', (e) => out.errors.push('m-pageerror: ' + e.message));
+    mp.on('console', (x) => { if (x.type() === 'error') out.errors.push('m-console: ' + x.text()); });
+    await mp.goto('http://localhost:8080/index.html', { waitUntil: 'load' });
+    await mp.waitForFunction(() => !!(window.LG && document.querySelector('#mm-start')), null, { timeout: 20000 });
+    const r = await mp.evaluate(() => ({
+      fs: LG.UI.fontScale,
+      inv: +getComputedStyle(document.documentElement).getPropertyValue('--fs-inv'),
+      flag: !!LG.U.LS.get('fontScaleUser', false),
+    }));
+    await c2.close();
+    return r;
+  })();
+  out.pass.mobile = out.mobile.fs === 1.5 && Math.abs(out.mobile.inv - 2 / 3) < 0.001 && !out.mobile.flag;
+
+  /* ===== ⑧ 零报错 ===== */
   out.pass.noErrors = out.errors.length === 0;
   out.allPass = Object.values(out.pass).every(Boolean);
   out.errors = out.errors.slice(0, 12);

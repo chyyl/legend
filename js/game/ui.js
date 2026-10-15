@@ -24,7 +24,10 @@
   function init(cv) {
     canvas = cv;
     overlay = document.getElementById('overlay');
-    applyFontScale(LG.U.LS.get('fontScale', 3)); // 字体大小（阶段二十）：默认3倍，设置页可调
+    // 字体大小（阶段二十）：分端默认——触屏手机 1.5×（反馈"手机版字体太大，UI太大"）、桌面 3×；
+    // 用户动过滑杆（fontScaleUser 标记）则尊重其选择。旧版曾默认 3× 落库，无标记时一并迁移到分端默认
+    applyFontScale(LG.U.LS.get('fontScaleUser') ? LG.U.LS.get('fontScale', 2)
+      : (window.matchMedia && matchMedia('(pointer: coarse)').matches ? 1.5 : 3));
     bindBus();
   }
 
@@ -34,10 +37,11 @@
      保证放大后仍贴合屏幕（calc 内乘 var() 兼容性最稳，zoom 挂子元素保居中已实测）。 */
   let _fsStyle = null;
   let _fsNow = 3; // 当前倍率缓存（canvas 文字——大地图区域名/队友名——每帧取用，避免读 LS）
-  function applyFontScale(v) {
-    v = Math.min(3, Math.max(1, +v || 3));
+  function applyFontScale(v, userSet) {
+    v = Math.min(3, Math.max(1, +v || 2));
     _fsNow = v;
     LG.U.LS.set('fontScale', v);
+    if (userSet) LG.U.LS.set('fontScaleUser', true); // 用户主动调过 → 不再被分端默认覆盖
     document.documentElement.style.setProperty('--fs-inv', String(1 / v));
     if (_fsStyle) _fsStyle.textContent = '#overlay > * { zoom: ' + v + '; }';
     return v;
@@ -525,7 +529,7 @@
     p.querySelector('#s-music').oninput = (e) => LG.Sound.setVolume(+e.target.value, 'music');
     p.querySelector('#s-sfx').oninput = (e) => LG.Sound.setVolume(+e.target.value, 'sfx');
     p.querySelector('#s-bright').oninput = (e) => setB(+e.target.value);
-    p.querySelector('#s-font').oninput = (e) => applyFontScale(+e.target.value); // 字体大小即时生效（阶段二十）
+    p.querySelector('#s-font').oninput = (e) => applyFontScale(+e.target.value, true); // 字体大小即时生效（阶段二十）
     p.querySelector('#s-lang').onclick = () => { LG.I18n.set(LG.I18n.lang === 'zh' ? 'en' : 'zh'); closePanel(); LG.U.bus.emit('lang_changed'); };
     p.querySelector('#s-map').onclick = () => renderMap();
     p.querySelector('#s-log').onclick = () => renderChangelog();
