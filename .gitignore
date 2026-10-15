@@ -1,6 +1,6 @@
 nul
 node_modules
-.playwright-mcp
+/.playwright-mcp/
 # 打包产物（重构建即得：npm run sync && cd android && ./gradlew.bat assembleRelease）
 /dist/
 # 自动更新检测端点（tools/build-www.mjs 生成，与 www/version.json 同内容；www/ 内随包分发）
