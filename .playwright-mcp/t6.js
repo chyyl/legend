@@ -83,10 +83,12 @@ async (page) => {
   out.bake = await p.evaluate((bl) => {
     const cv = document.querySelector('#bigmap'), g = cv.getContext('2d');
     const N = LG.Config.SIZE, SZ = 480;
-    // ceil 保证取样单元(4.17格宽)整体落在 12×12 区块内
+    /* ceil 保证取样单元(4.17格宽)整体落在 12×12 区块内；
+       阶段二十一起烘焙叠加了山体阴影（区块边缘像素按邻块高差亮/暗）——
+       对比度量的是"高度分层底色"本身 → 采样退到区块内部(+9格)，让西/上邻仍同块同高，避开边缘明暗 */
     const luma = (b) => {
-      const px = Math.min(SZ - 1, Math.ceil(b.x * SZ / N + 1e-6));
-      const py = Math.min(SZ - 1, Math.ceil(b.y * SZ / N + 1e-6));
+      const px = Math.min(SZ - 1, Math.ceil((b.x + 9) * SZ / N + 1e-6));
+      const py = Math.min(SZ - 1, Math.ceil((b.y + 9) * SZ / N + 1e-6));
       const d = g.getImageData(px, py, 1, 1).data;
       return d[0] + d[1] + d[2];
     };

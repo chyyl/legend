@@ -64,6 +64,7 @@
     const nHill = makeNoise(seed + 3, 40);  // 台地高差（低频 -> 成片台阶，非碎点）
     const nMoist = makeNoise(seed + 7, 48); // 干湿（区分草地/沙漠/雪地）
     const rnd = LG.U.rng(seed + 99);
+    const wallRg = LG.Config.REGIONS.find((r) => r.id === 'wall'); // 边境长城：以世界坐标定墙线（见瓦片循环内的名实相符覆盖）
 
     // 岛屿掩码：中心为陆地，边缘为海（半径约 950 的圆 + 噪声扰动）
     const cx = W / 2, cy = W / 2;
@@ -107,6 +108,24 @@
         // 近海岸强制沙地
         if (island > 0.86 && type !== T_WATER) type = T_SAND;
 
+        /* 阶段二十一·地名与地形相符（2026-10-15 反馈"地图与地名做的不符合"，审计坐实三处名不符实：
+           跨海大桥中心±40格无一滴水、骷髅岛是内陆岩地、边境长城无墙）——
+           桥：区域中心西/南开挖一条通向外海的水道，中心留平台（环路过水由 buildRoads 铺成桥面）；
+           岛：中心留岛、外围 bd 45~75 一圈护城水域，环路两处跨水进出；
+           墙：区域北侧一道东西向城墙，铺路穿过处凿开缺口成关口。 */
+        if (rg.id === 'bridge') {
+          if (bd <= 20) h = 0; // 桥心平台保平（BOSS/传送落点不困山地）
+          else if (Math.abs(y - rg.cy) < 34 && x < rg.cx + 40) { type = T_WATER; h = 0; }
+        } else if (rg.id === 'isle') {
+          if (bd <= 45) h = 0; // 岛心保平
+          else if (bd < 75) { type = T_WATER; h = 0; } // 护城水域
+        }
+        /* 墙体三格厚：480px 底图每 4.17 格采一格，单格墙线会被漏采（实测 237 格墙在地图上不可见）；
+           三格保证至少命中一行采样，主视口挤出后也更有城墙体量 */
+        if (wallRg && y >= wallRg.cy - 71 && y <= wallRg.cy - 69 && x >= wallRg.cx - 120 && x <= wallRg.cx + 120) {
+          type = T_WALL; h = 2; // 长城墙体（不可走，铺路时凿关口）
+        }
+
         tiles[i] = type;
         height[i] = h;
       }
@@ -136,7 +155,8 @@
      营地→边境长城→…→终末之战）把相邻区域串成一条闭合环线，末段终末之战回接收口——
      沿环走总能回到出发点，联机队友有统一巡线不易走散。
      （旧实现为营地→各区放射直线：星型无回路，跨区只能越野穿插）
-     逐段直线 lerp 铺 3 宽路并清零高度；水面跳过（可通行性由 Path A* 兜底） */
+     逐段直线 lerp 铺 3 宽路并清零高度；水面/城墙也直接铺成路面（阶段二十一：
+     跨海大桥水道与骷髅岛护城河由环路跨水成桥、长城穿墙成关口，环线全程可通行） */
   function buildRoads() {
     const R = LG.Config.REGIONS;
     for (let ri = 0; ri < R.length; ri++) {
@@ -151,7 +171,7 @@
             const px = nx + ox, py = ny + oy;
             if (px < 0 || py < 0 || px >= W || py >= W) continue;
             const i = py * W + px;
-            if (tiles[i] !== T_WATER) { tiles[i] = T_ROAD; height[i] = 0; }
+            tiles[i] = T_ROAD; height[i] = 0; // 含水面/城墙：跨水即桥、穿墙成关口
           }
       }
     }

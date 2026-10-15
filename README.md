@@ -75,8 +75,8 @@ python -m http.server 8080      # 终端2：静态服务
 
 | 包 | 路径 | 说明 |
 |---|---|---|
-| Release（已签名） | `dist/LEGEND-v1.3-release.apk` | 日常安装这个（约3.5MB） |
-| Debug | `dist/LEGEND-v1.3-debug.apk` | 排查用，可连 logcat（约4.4MB） |
+| Release（已签名） | `dist/LEGEND-v1.4-release.apk` | 日常安装这个（约3.5MB） |
+| Debug | `dist/LEGEND-v1.4-debug.apk` | 排查用，可连 logcat（约4.4MB） |
 
 ```bash
 # 1) 每次网页改动后重建 www 并同步进安卓工程（JS 改动必跑；sync = build-www + cap sync）

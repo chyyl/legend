@@ -59,6 +59,12 @@
   function apply(d) {
     const P = LG.Player._raw;
     Object.assign(P, d.player);
+    /* 阶段二十一地形重排（跨海大桥水道/骷髅岛护城河/边境长城城墙）后，
+       旧档坐标可能落在新水域或城墙上——吸附到最近可走格，防读档卡死 */
+    if (!LG.Terrain.walkable(P.x, P.y)) {
+      const near = LG.Path && LG.Path.nearestWalkable ? LG.Path.nearestWalkable(P.x | 0, P.y | 0, 24) : null;
+      if (near) { P.x = near.x; P.y = near.y; }
+    }
     // expTo 不入档：按玩家等级公式重算（player.expNeed），封顶置 0（与 gainExp 一致）
     P.expTo = P.level >= LG.Config.MAX_LEVEL ? 0 : LG.Player.expNeed(P.level);
     P.mode = d.mode || 'on';
